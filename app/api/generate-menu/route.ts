@@ -17,7 +17,14 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
 
-    const { restaurantName, menuText, userId } = body;
+    const {
+      restaurantName,
+      menuText,
+      userId,
+      logoUrl,
+      bannerUrl,
+      themeColor,
+    } = body;
 
     if (!userId) {
       return NextResponse.json(
@@ -87,7 +94,6 @@ ${menuText}
     }
 
     const parsedMenu = JSON.parse(result);
-
     const slug = createSlug(restaurantName);
 
     const { error } = await supabase.from("menus").upsert(
@@ -96,6 +102,9 @@ ${menuText}
         restaurant_name: restaurantName,
         menu_data: parsedMenu,
         user_id: userId,
+        logo_url: logoUrl,
+        banner_url: bannerUrl,
+        theme_color: themeColor || "#16a34a",
       },
       {
         onConflict: "slug",
