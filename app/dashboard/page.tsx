@@ -1,11 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { QRCodeCanvas } from "qrcode.react";
+import { supabase } from "@/lib/supabase";
 
 export default function DashboardPage() {
-  const [restaurantName, setRestaurantName] =
-    useState("Green Leaf Cafe");
+  const [checkingAuth, setCheckingAuth] = useState(true);
+  const [userId, setUserId] = useState("");
+
+  const [restaurantName, setRestaurantName] = useState("Green Leaf Cafe");
 
   const [menuText, setMenuText] = useState(`Starters:
 Paneer Tikka - ₹220 - spicy grilled paneer
@@ -27,14 +30,31 @@ Mango Lassi - ₹120
 Fresh Lime Soda - ₹80`);
 
   const [menuData, setMenuData] = useState<any>(null);
-
   const [loading, setLoading] = useState(false);
-
   const [slug, setSlug] = useState("");
-
   const [question, setQuestion] = useState("");
-
   const [answer, setAnswer] = useState("");
+
+  useEffect(() => {
+    async function checkUser() {
+      const { data } = await supabase.auth.getSession();
+
+      if (!data.session) {
+        window.location.href = "/login";
+        return;
+      }
+
+      setUserId(data.session.user.id);
+      setCheckingAuth(false);
+    }
+
+    checkUser();
+  }, []);
+
+  async function logout() {
+    await supabase.auth.signOut();
+    window.location.href = "/login";
+  }
 
   async function generateMenu() {
     try {
@@ -48,6 +68,7 @@ Fresh Lime Soda - ₹80`);
         body: JSON.stringify({
           restaurantName,
           menuText,
+          userId,
         }),
       });
 
@@ -60,17 +81,11 @@ Fresh Lime Soda - ₹80`);
       }
 
       setSlug(data.slug);
-
-      const parsed = JSON.parse(data.result);
-
-      setMenuData(parsed);
-
+      setMenuData(JSON.parse(data.result));
       setLoading(false);
     } catch (error) {
       console.error(error);
-
       alert("Something went wrong.");
-
       setLoading(false);
     }
   }
@@ -89,56 +104,65 @@ Fresh Lime Soda - ₹80`);
       });
 
       const data = await response.json();
-
       setAnswer(data.answer);
     } catch (error) {
       console.error(error);
     }
   }
 
-  const publicMenuUrl =
-    slug
-      ? `https://menuai-tau.vercel.app/menu/${slug}`
-      : "";
+  const publicMenuUrl = slug
+    ? `https://menuai-tau.vercel.app/menu/${slug}`
+    : "";
+
+  if (checkingAuth) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-green-50">
+        <p className="text-xl font-semibold text-green-800">
+          Checking login...
+        </p>
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-green-50 px-6 py-10">
       <div className="mx-auto max-w-6xl">
-        <h1 className="text-6xl font-bold text-green-800">
-          Restaurant Dashboard
-        </h1>
-
-        <p className="mt-4 text-xl text-gray-600">
-          Paste your menu text and generate an AI-powered digital menu.
-        </p>
-
-        <div className="mt-10 rounded-3xl bg-white p-8 shadow-xl">
+        <div className="flex items-center justify-between gap-4">
           <div>
-            <label className="text-xl font-semibold">
-              Restaurant Name
-            </label>
+            <h1 className="text-6xl font-bold text-green-800">
+              Restaurant Dashboard
+            </h1>
 
-            <input
-              type="text"
-              value={restaurantName}
-              onChange={(e) =>
-                setRestaurantName(e.target.value)
-              }
-              className="mt-3 w-full rounded-2xl border border-gray-300 p-4 text-xl"
-            />
+            <p className="mt-4 text-xl text-gray-600">
+              Paste your menu text and generate an AI-powered digital menu.
+            </p>
           </div>
 
+          <button
+            onClick={logout}
+            className="rounded-xl border border-red-500 px-5 py-3 font-semibold text-red-600 hover:bg-red-50"
+          >
+            Logout
+          </button>
+        </div>
+
+        <div className="mt-10 rounded-3xl bg-white p-8 shadow-xl">
+          <label className="text-xl font-semibold">Restaurant Name</label>
+
+          <input
+            type="text"
+            value={restaurantName}
+            onChange={(e) => setRestaurantName(e.target.value)}
+            className="mt-3 w-full rounded-2xl border border-gray-300 p-4 text-xl"
+          />
+
           <div className="mt-8">
-            <label className="text-xl font-semibold">
-              Paste Menu Text
-            </label>
+            <label className="text-xl font-semibold">Paste Menu Text</label>
 
             <textarea
               rows={14}
               value={menuText}
-              onChange={(e) =>
-                setMenuText(e.target.value)
-              }
+              onChange={(e) => setMenuText(e.target.value)}
               className="mt-3 w-full rounded-2xl border border-gray-300 p-4 text-lg"
             />
           </div>
@@ -146,11 +170,10 @@ Fresh Lime Soda - ₹80`);
           <div className="mt-8 flex flex-wrap gap-4">
             <button
               onClick={generateMenu}
-              className="rounded-2xl bg-green-600 px-8 py-4 text-xl font-semibold text-white hover:bg-green-700"
+              disabled={loading}
+              className="rounded-2xl bg-green-600 px-8 py-4 text-xl font-semibold text-white hover:bg-green-700 disabled:bg-gray-400"
             >
-              {loading
-                ? "Generating..."
-                : "Generate AI Menu"}
+              {loading ? "Generating..." : "Generate AI Menu"}
             </button>
 
             {slug && (
@@ -177,9 +200,7 @@ Fresh Lime Soda - ₹80`);
 
             {slug && (
               <div className="mt-10 rounded-3xl bg-green-50 p-10 text-center">
-                <h2 className="text-4xl font-bold text-green-800">
-                  QR Code
-                </h2>
+                <h2 className="text-4xl font-bold text-green-800">QR Code</h2>
 
                 <p className="mt-3 text-lg text-gray-600">
                   Customers can scan this QR code to open the menu.
@@ -187,10 +208,7 @@ Fresh Lime Soda - ₹80`);
 
                 <div className="mt-8 flex justify-center">
                   <div className="rounded-3xl bg-white p-6 shadow-lg">
-                    <QRCodeCanvas
-                      value={publicMenuUrl}
-                      size={240}
-                    />
+                    <QRCodeCanvas value={publicMenuUrl} size={240} />
                   </div>
                 </div>
 
@@ -207,69 +225,55 @@ Fresh Lime Soda - ₹80`);
             )}
 
             <div className="mt-14 space-y-14">
-              {menuData.sections.map(
-                (section: any, index: number) => (
-                  <section key={index}>
-                    <h2 className="mb-6 border-b pb-3 text-4xl font-bold">
-                      {section.name}
-                    </h2>
+              {menuData.sections.map((section: any, index: number) => (
+                <section key={index}>
+                  <h2 className="mb-6 border-b pb-3 text-4xl font-bold">
+                    {section.name}
+                  </h2>
 
-                    <div className="grid gap-6 md:grid-cols-2">
-                      {section.items.map(
-                        (
-                          item: any,
-                          itemIndex: number
-                        ) => (
-                          <div
-                            key={itemIndex}
-                            className="rounded-3xl border border-green-100 bg-green-50 p-7"
-                          >
-                            <div className="flex items-start justify-between gap-4">
-                              <div>
-                                <h3 className="text-3xl font-bold">
-                                  {item.name}
-                                </h3>
+                  <div className="grid gap-6 md:grid-cols-2">
+                    {section.items.map((item: any, itemIndex: number) => (
+                      <div
+                        key={itemIndex}
+                        className="rounded-3xl border border-green-100 bg-green-50 p-7"
+                      >
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <h3 className="text-3xl font-bold">{item.name}</h3>
 
-                                <p className="mt-3 text-lg text-gray-600">
-                                  {item.description}
-                                </p>
+                            <p className="mt-3 text-lg text-gray-600">
+                              {item.description}
+                            </p>
 
-                                {item.tags && (
-                                  <div className="mt-4 flex flex-wrap gap-2">
-                                    {item.tags.map(
-                                      (
-                                        tag: string,
-                                        tagIndex: number
-                                      ) => (
-                                        <span
-                                          key={tagIndex}
-                                          className="rounded-full bg-white px-4 py-1 text-sm text-green-700"
-                                        >
-                                          {tag}
-                                        </span>
-                                      )
-                                    )}
-                                  </div>
+                            {item.tags && (
+                              <div className="mt-4 flex flex-wrap gap-2">
+                                {item.tags.map(
+                                  (tag: string, tagIndex: number) => (
+                                    <span
+                                      key={tagIndex}
+                                      className="rounded-full bg-white px-4 py-1 text-sm text-green-700"
+                                    >
+                                      {tag}
+                                    </span>
+                                  )
                                 )}
                               </div>
-
-                              <span className="text-3xl font-bold text-green-700">
-                                {item.price}
-                              </span>
-                            </div>
+                            )}
                           </div>
-                        )
-                      )}
-                    </div>
-                  </section>
-                )
-              )}
+
+                          <span className="text-3xl font-bold text-green-700">
+                            {item.price}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              ))}
             </div>
 
             <div className="mt-16 rounded-3xl bg-green-50 p-10">
-              <h2 className="text-5xl font-bold text-green-800">
-                Ask MenuAI
-              </h2>
+              <h2 className="text-5xl font-bold text-green-800">Ask MenuAI</h2>
 
               <p className="mt-3 text-lg text-gray-600">
                 Ask questions about the menu.
@@ -279,9 +283,7 @@ Fresh Lime Soda - ₹80`);
                 <input
                   type="text"
                   value={question}
-                  onChange={(e) =>
-                    setQuestion(e.target.value)
-                  }
+                  onChange={(e) => setQuestion(e.target.value)}
                   placeholder="suggest spicy dishes"
                   className="flex-1 rounded-2xl border border-gray-300 p-4 text-xl"
                 />

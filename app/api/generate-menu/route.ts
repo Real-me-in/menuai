@@ -17,7 +17,14 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
 
-    const { restaurantName, menuText } = body;
+    const { restaurantName, menuText, userId } = body;
+
+    if (!userId) {
+      return NextResponse.json(
+        { error: "User not logged in." },
+        { status: 401 }
+      );
+    }
 
     const completion = await groq.chat.completions.create({
       model: "llama-3.1-8b-instant",
@@ -65,8 +72,7 @@ ${menuText}
       ],
     });
 
-    let result =
-      completion.choices[0]?.message?.content || "";
+    let result = completion.choices[0]?.message?.content || "";
 
     result = result
       .replace(/```json/g, "")
@@ -84,29 +90,24 @@ ${menuText}
 
     const slug = createSlug(restaurantName);
 
-    const { error } = await supabase
-      .from("menus")
-      .upsert(
-        {
-          slug,
-          restaurant_name: restaurantName,
-          menu_data: parsedMenu,
-        },
-        {
-          onConflict: "slug",
-        }
-      );
+    const { error } = await supabase.from("menus").upsert(
+      {
+        slug,
+        restaurant_name: restaurantName,
+        menu_data: parsedMenu,
+        user_id: userId,
+      },
+      {
+        onConflict: "slug",
+      }
+    );
 
     if (error) {
       console.error("Supabase save error:", error);
 
       return NextResponse.json(
-        {
-          error: error.message,
-        },
-        {
-          status: 500,
-        }
+        { error: error.message },
+        { status: 500 }
       );
     }
 
@@ -118,12 +119,8 @@ ${menuText}
     console.error(error);
 
     return NextResponse.json(
-      {
-        error: "Something went wrong.",
-      },
-      {
-        status: 500,
-      }
+      { error: "Something went wrong." },
+      { status: 500 }
     );
   }
 }
