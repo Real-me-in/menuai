@@ -4,6 +4,12 @@ import { useEffect, useState } from "react";
 import { QRCodeCanvas } from "qrcode.react";
 import { supabase } from "@/lib/supabase";
 
+declare global {
+  interface Window {
+    Razorpay: any;
+  }
+}
+
 export default function DashboardPage() {
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [userId, setUserId] = useState("");
@@ -54,7 +60,65 @@ Fresh Lime Soda - ₹80`);
     }
 
     checkUser();
+
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.async = true;
+    document.body.appendChild(script);
   }, []);
+
+  async function startSubscription() {
+    const response = await fetch("/api/create-order", {
+      method: "POST",
+    });
+
+    const data = await response.json();
+
+    if (data.error) {
+      alert(data.error);
+      return;
+    }
+
+    const options = {
+      key: data.keyId,
+      amount: data.amount,
+      currency: data.currency,
+      name: "MenuAI Pro",
+      description: "Monthly Restaurant SaaS Subscription",
+      order_id: data.orderId,
+
+      handler: async function (paymentResponse: any) {
+        const verifyResponse = await fetch("/api/verify-payment", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            userId,
+            razorpay_order_id: paymentResponse.razorpay_order_id,
+            razorpay_payment_id: paymentResponse.razorpay_payment_id,
+            razorpay_signature: paymentResponse.razorpay_signature,
+          }),
+        });
+
+        const verifyData = await verifyResponse.json();
+
+        if (verifyData.success) {
+          alert("Payment verified. Welcome to MenuAI Pro!");
+          loadMyMenus(userId);
+        } else {
+          alert(verifyData.error || "Payment verification failed.");
+        }
+      },
+
+      theme: {
+        color: themeColor,
+      },
+    };
+
+    const razorpay = new window.Razorpay(options);
+    razorpay.open();
+  }
 
   async function uploadImage(file: File, type: "logo" | "banner") {
     const fileExt = file.name.split(".").pop();
@@ -73,11 +137,8 @@ Fresh Lime Soda - ₹80`);
       .from("menuai-images")
       .getPublicUrl(fileName);
 
-    if (type === "logo") {
-      setLogoUrl(data.publicUrl);
-    } else {
-      setBannerUrl(data.publicUrl);
-    }
+    if (type === "logo") setLogoUrl(data.publicUrl);
+    else setBannerUrl(data.publicUrl);
   }
 
   async function logout() {
@@ -95,15 +156,11 @@ Fresh Lime Soda - ₹80`);
     });
 
     const data = await response.json();
-
-    if (data.menus) {
-      setMyMenus(data.menus);
-    }
+    if (data.menus) setMyMenus(data.menus);
   }
 
   async function deleteMenu(menuId: string) {
-    const confirmDelete = confirm("Are you sure you want to delete this menu?");
-    if (!confirmDelete) return;
+    if (!confirm("Delete this menu?")) return;
 
     const response = await fetch("/api/delete-menu", {
       method: "POST",
@@ -120,7 +177,6 @@ Fresh Lime Soda - ₹80`);
       return;
     }
 
-    alert("Menu deleted successfully.");
     loadMyMenus(userId);
   }
 
@@ -137,8 +193,6 @@ Fresh Lime Soda - ₹80`);
     setLogoUrl(menu.logo_url || "");
     setBannerUrl(menu.banner_url || "");
     setThemeColor(menu.theme_color || "#16a34a");
-    setQuestion("");
-    setAnswer("");
 
     const readableMenu = menu.menu_data.sections
       .map((section: any) => {
@@ -216,27 +270,50 @@ Fresh Lime Soda - ₹80`);
   }
 
   return (
-    <main className="min-h-screen bg-green-50 px-6 py-10">
+    <main className="min-h-screen bg-green-50 px-4 py-6 sm:px-6 sm:py-10">
       <div className="mx-auto max-w-6xl">
-        <div className="flex items-center justify-between gap-4">
+        <div className="mb-10 rounded-3xl bg-gradient-to-r from-green-600 to-green-800 p-8 text-white shadow-xl">
+          <h2 className="text-5xl font-bold">Upgrade to MenuAI Pro</h2>
+
+          <p className="mt-4 text-xl text-green-100">
+            Unlock premium restaurant branding and advanced SaaS features.
+          </p>
+
+          <div className="mt-8 flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-4xl font-bold sm:text-5xl">₹499</p>
+              <p className="mt-2 text-lg text-green-100">per month</p>
+            </div>
+
+            <button
+              onClick={startSubscription}
+              className="w-full rounded-2xl bg-white px-8 py-4 text-xl font-bold text-green-700 hover:bg-green-100 sm:w-auto"
+            >
+              Upgrade Now
+            </button>
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-6xl font-bold text-green-800">
+            <h1 className="text-4xl font-bold text-green-800 sm:text-6xl">
               Restaurant Dashboard
             </h1>
-            <p className="mt-4 text-xl text-gray-600">
+
+            <p className="mt-3 text-base text-gray-600 sm:mt-4 sm:text-xl">
               AI-powered restaurant management platform
             </p>
           </div>
 
           <button
             onClick={logout}
-            className="rounded-xl border border-red-500 px-5 py-3 font-semibold text-red-600 hover:bg-red-50"
+            className="w-full sm:w-auto rounded-xl border border-red-500 px-5 py-3 font-semibold text-red-600 hover:bg-red-50"
           >
             Logout
           </button>
         </div>
 
-        <div className="mt-10 rounded-3xl bg-white p-8 shadow-xl">
+        <div className="mt-10 rounded-3xl bg-white p-5 shadow-xl sm:p-8">
           <label className="text-xl font-semibold">Restaurant Name</label>
 
           <input
@@ -314,7 +391,7 @@ Fresh Lime Soda - ₹80`);
             />
           </div>
 
-          <div className="mt-8 flex flex-wrap gap-4">
+          <div className="mt-8 flex flex-col gap-4 sm:flex-row sm:flex-wrap">
             <button
               onClick={generateMenu}
               disabled={loading}
@@ -357,7 +434,7 @@ Fresh Lime Soda - ₹80`);
                   <div className="mt-5 flex flex-wrap gap-3">
                     <button
                       onClick={() => editMenu(menu)}
-                      className="rounded-xl border border-blue-500 px-5 py-2 font-semibold text-blue-600"
+                      className="w-full sm:w-auto rounded-xl border border-blue-500 px-5 py-2 font-semibold text-blue-600"
                     >
                       Edit Menu
                     </button>
@@ -365,7 +442,7 @@ Fresh Lime Soda - ₹80`);
                     <a
                       href={`/menu/${menu.slug}`}
                       target="_blank"
-                      className="rounded-xl px-5 py-2 font-semibold text-white"
+                      className="w-full sm:w-auto rounded-xl px-5 py-2 font-semibold text-white"
                       style={{ backgroundColor: menu.theme_color || themeColor }}
                     >
                       Open Menu
@@ -373,7 +450,7 @@ Fresh Lime Soda - ₹80`);
 
                     <button
                       onClick={() => copyMenuLink(menu.slug)}
-                      className="rounded-xl border px-5 py-2 font-semibold"
+                      className="w-full sm:w-auto rounded-xl border px-5 py-2 font-semibold"
                       style={{
                         borderColor: menu.theme_color || themeColor,
                         color: menu.theme_color || themeColor,
@@ -384,7 +461,7 @@ Fresh Lime Soda - ₹80`);
 
                     <button
                       onClick={() => deleteMenu(menu.id)}
-                      className="rounded-xl border border-red-500 px-5 py-2 font-semibold text-red-600"
+                      className="w-full sm:w-auto rounded-xl border border-red-500 px-5 py-2 font-semibold text-red-600"
                     >
                       Delete Menu
                     </button>
