@@ -98,7 +98,7 @@ Fresh Lime Soda - ₹80`);
 
   const publicMenuUrl =
     slug
-      ? `http://localhost:3000/menu/${slug}`
+      ? `https://menuai-tau.vercel.app/menu/${slug}`
       : "";
 
   return (
