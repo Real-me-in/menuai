@@ -122,4 +122,4 @@ export default async function MenuPage({ params }: MenuPageProps) {
       </div>
     </main>
   );
-}
+}s
