@@ -1,3 +1,6 @@
+"use client";
+
+import { use, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
 type MenuPageProps = {
@@ -6,14 +9,63 @@ type MenuPageProps = {
   }>;
 };
 
-export default async function MenuPage({ params }: MenuPageProps) {
-  const { slug } = await params;
+export default function MenuPage({ params }: MenuPageProps) {
+  const { slug } = use(params);
 
-  const { data } = await supabase
-    .from("menus")
-    .select("*")
-    .eq("slug", slug)
-    .single();
+  const [data, setData] = useState<any>(null);
+  const [pageLoading, setPageLoading] = useState(true);
+
+  const [question, setQuestion] = useState("");
+  const [answer, setAnswer] = useState("");
+  const [asking, setAsking] = useState(false);
+
+  useEffect(() => {
+    async function loadMenu() {
+      const { data } = await supabase
+        .from("menus")
+        .select("*")
+        .eq("slug", slug)
+        .single();
+
+      setData(data);
+      setPageLoading(false);
+    }
+
+    loadMenu();
+  }, [slug]);
+
+  async function askMenu() {
+    try {
+      setAsking(true);
+      setAnswer("");
+
+      const response = await fetch("/api/ask-menu", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          menuData: data.menu_data,
+          question,
+        }),
+      });
+
+      const result = await response.json();
+      setAnswer(result.answer || "No answer found.");
+    } catch (error) {
+      setAnswer("Something went wrong. Please try again.");
+    } finally {
+      setAsking(false);
+    }
+  }
+
+  if (pageLoading) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-green-50">
+        <h1 className="text-3xl font-bold">Loading menu...</h1>
+      </main>
+    );
+  }
 
   if (!data) {
     return (
@@ -117,6 +169,42 @@ export default async function MenuPage({ params }: MenuPageProps) {
                 </div>
               </section>
             ))}
+          </div>
+
+          <div className="mt-16 rounded-3xl bg-white p-6 shadow-xl">
+            <h2
+              className="text-3xl font-bold"
+              style={{ color: themeColor }}
+            >
+              Ask AI Waiter
+            </h2>
+
+            <p className="mt-2 text-gray-600">
+              Ask questions about the menu.
+            </p>
+
+            <div className="mt-6 flex flex-col gap-4">
+              <input
+                value={question}
+                onChange={(e) => setQuestion(e.target.value)}
+                placeholder="Example: Suggest a spicy veg dish"
+                className="rounded-xl border border-gray-300 p-3"
+              />
+
+              <button
+                onClick={askMenu}
+                disabled={asking || !question.trim()}
+                className="rounded-xl bg-green-600 px-6 py-3 font-semibold text-white hover:bg-green-700 disabled:bg-gray-400"
+              >
+                {asking ? "Thinking..." : "Ask AI"}
+              </button>
+
+              {answer && (
+                <div className="rounded-2xl bg-green-50 p-4 text-gray-800">
+                  {answer}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
