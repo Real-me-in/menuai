@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import QRCode from "react-qr-code";
+import { supabase } from "@/lib/supabase";
 
 type MenuItem = {
   name: string;
@@ -25,22 +26,37 @@ export default function DashboardPage() {
   const [menuText, setMenuText] = useState("");
   const [menuData, setMenuData] = useState<MenuData | null>(null);
   const [rawResult, setRawResult] = useState("");
-  const [menuSlug, setMenuSlug] = useState("");
   const [loading, setLoading] = useState(false);
+  const [menuSlug, setMenuSlug] = useState("");
 
   async function generateMenu() {
     try {
       setLoading(true);
       setMenuData(null);
       setRawResult("");
+      setMenuSlug("");
+
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        alert("Please login first.");
+        return;
+      }
 
       const response = await fetch("/api/generate-menu", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ restaurantName, menuText }),
+        body: JSON.stringify({
+          restaurantName,
+          menuText,
+          userId: user.id,
+        }),
       });
 
       const data = await response.json();
+
       let resultText = data.result || "";
 
       resultText = resultText
@@ -56,10 +72,13 @@ export default function DashboardPage() {
       }
 
       const parsed = JSON.parse(resultText);
+
       setMenuData(parsed);
       setMenuSlug(data.slug);
     } catch (error) {
-      setRawResult("Could not convert JSON into menu cards. Try clicking Generate again.");
+      setRawResult(
+        "Could not convert JSON into menu cards. Try clicking Generate again."
+      );
     } finally {
       setLoading(false);
     }
@@ -68,7 +87,9 @@ export default function DashboardPage() {
   return (
     <main className="min-h-screen bg-green-50 px-6 py-10">
       <div className="mx-auto max-w-5xl">
-        <h1 className="text-4xl font-bold text-gray-900">Restaurant Dashboard</h1>
+        <h1 className="text-4xl font-bold text-gray-900">
+          Restaurant Dashboard
+        </h1>
 
         <p className="mt-2 text-gray-600">
           Paste your menu text and generate an AI-powered digital menu.
@@ -126,6 +147,7 @@ export default function DashboardPage() {
                       >
                         <div className="flex justify-between gap-4">
                           <h4 className="text-lg font-bold">{item.name}</h4>
+
                           <span className="font-bold text-green-700">
                             {item.price}
                           </span>
@@ -155,30 +177,32 @@ export default function DashboardPage() {
             </div>
           </div>
         )}
-{menuSlug && (
-  <div className="mt-8 rounded-2xl bg-white p-6 shadow-lg">
-    <h3 className="text-2xl font-bold text-gray-900">
-      Public Menu Link
-    </h3>
 
-    <a
-      href={`/menu/${menuSlug}`}
-      target="_blank"
-      className="mt-3 block text-green-700 underline"
-    >
-      {window.location.origin}/menu/{menuSlug}
-    </a>
+        {menuSlug && (
+          <div className="mt-8 rounded-2xl bg-white p-6 shadow-lg">
+            <h3 className="text-2xl font-bold text-gray-900">
+              Public Menu Link
+            </h3>
 
-    <div className="mt-6 flex justify-center">
-      <div className="rounded-2xl bg-white p-4">
-        <QRCode
-          value={`${window.location.origin}/menu/${menuSlug}`}
-          size={180}
-        />
-      </div>
-    </div>
-  </div>
-)}
+            <a
+              href={`/menu/${menuSlug}`}
+              target="_blank"
+              className="mt-3 block text-green-700 underline"
+            >
+              {window.location.origin}/menu/{menuSlug}
+            </a>
+
+            <div className="mt-6 flex justify-center">
+              <div className="rounded-2xl bg-white p-4">
+                <QRCode
+                  value={`${window.location.origin}/menu/${menuSlug}`}
+                  size={180}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
         {rawResult && (
           <div className="mt-8 rounded-2xl bg-white p-6 shadow-lg">
             {rawResult}
