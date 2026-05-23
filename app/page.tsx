@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import QRCode from "react-qr-code";
 
 type MenuItem = {
   name: string;
@@ -24,6 +25,7 @@ export default function DashboardPage() {
   const [menuText, setMenuText] = useState("");
   const [menuData, setMenuData] = useState<MenuData | null>(null);
   const [rawResult, setRawResult] = useState("");
+  const [menuSlug, setMenuSlug] = useState("");
   const [loading, setLoading] = useState(false);
 
   async function generateMenu() {
@@ -55,6 +57,7 @@ export default function DashboardPage() {
 
       const parsed = JSON.parse(resultText);
       setMenuData(parsed);
+      setMenuSlug(data.slug);
     } catch (error) {
       setRawResult("Could not convert JSON into menu cards. Try clicking Generate again.");
     } finally {
@@ -152,7 +155,30 @@ export default function DashboardPage() {
             </div>
           </div>
         )}
+{menuSlug && (
+  <div className="mt-8 rounded-2xl bg-white p-6 shadow-lg">
+    <h3 className="text-2xl font-bold text-gray-900">
+      Public Menu Link
+    </h3>
 
+    <a
+      href={`/menu/${menuSlug}`}
+      target="_blank"
+      className="mt-3 block text-green-700 underline"
+    >
+      {window.location.origin}/menu/{menuSlug}
+    </a>
+
+    <div className="mt-6 flex justify-center">
+      <div className="rounded-2xl bg-white p-4">
+        <QRCode
+          value={`${window.location.origin}/menu/${menuSlug}`}
+          size={180}
+        />
+      </div>
+    </div>
+  </div>
+)}
         {rawResult && (
           <div className="mt-8 rounded-2xl bg-white p-6 shadow-lg">
             {rawResult}
