@@ -26,12 +26,8 @@ export async function POST(req: Request) {
       themeColor,
     } = body;
 
-    if (!userId) {
-      return NextResponse.json(
-        { error: "User not logged in." },
-        { status: 401 }
-      );
-    }
+    const finalUserId = 
+      userId || "00000000-0000-0000-0000-000000000000";
 
     const completion = await groq.chat.completions.create({
       model: "llama-3.1-8b-instant",
@@ -93,7 +89,23 @@ ${menuText}
       result = result.substring(start, end + 1);
     }
 
-    const parsedMenu = JSON.parse(result);
+    let parsedMenu;
+
+try {
+  console.log("RAW AI RESPONSE:", result);
+  parsedMenu = JSON.parse(result);
+} catch (parseError) {
+  console.error("JSON PARSE ERROR:", parseError);
+  console.error("FAILED AI RESPONSE:", result);
+
+  return NextResponse.json(
+    {
+      error: "Could not convert JSON into menu cards. Try clicking Generate again.",
+      raw: result,
+    },
+    { status: 500 }
+  );
+}
     const slug = createSlug(restaurantName);
 
     const { error } = await supabase.from("menus").upsert(
@@ -101,7 +113,7 @@ ${menuText}
         slug,
         restaurant_name: restaurantName,
         menu_data: parsedMenu,
-        user_id: userId,
+        user_id: finalUserId,
         logo_url: logoUrl,
         banner_url: bannerUrl,
         theme_color: themeColor || "#16a34a",
