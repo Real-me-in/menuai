@@ -2,7 +2,6 @@
 
 import AppNav from "@/components/AppNav";
 import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 
 type OrderItem = {
@@ -26,12 +25,19 @@ type Restaurant = {
   banner_url?: string;
 };
 
-type FilterType = "all" | "new" | "preparing" | "ready";
+type FilterType =
+  | "all"
+  | "new"
+  | "preparing"
+  | "ready";
 
 export default function KitchenPage() {
   const restaurantSlug = "mango-groove";
 
-  const [orders, setOrders] = useState<Order[]>([]);
+  const [orders, setOrders] = useState<Order[]>(
+    []
+  );
+
   const [restaurant, setRestaurant] =
     useState<Restaurant | null>(null);
 
@@ -71,7 +77,9 @@ export default function KitchenPage() {
       .select("*")
       .eq("restaurant_slug", restaurantSlug)
       .not("status", "eq", "completed")
-      .order("created_at", { ascending: true });
+      .order("created_at", {
+        ascending: true,
+      });
 
     if (error) {
       alert(
@@ -82,7 +90,8 @@ export default function KitchenPage() {
       return;
     }
 
-    const fetchedOrders = (data || []) as Order[];
+    const fetchedOrders = (data ||
+      []) as Order[];
 
     const currentIds = fetchedOrders.map(
       (order) => order.id
@@ -259,64 +268,45 @@ export default function KitchenPage() {
       <AppNav />
 
       <main className="min-h-screen bg-black text-white">
-        {restaurant?.banner_url && (
-          <div className="relative h-64 w-full overflow-hidden">
-            <img
-              src={restaurant.banner_url}
-              alt={restaurant.name}
-              className="h-full w-full object-cover"
-            />
+        <div className="mx-auto max-w-7xl p-6">
+          <div className="mb-6 flex flex-col gap-4 rounded-2xl bg-zinc-950/90 p-5 xl:flex-row xl:items-center xl:justify-between">
+            <div>
+              <h1 className="text-4xl font-bold">
+                Restaurant Kitchen
+              </h1>
 
-            <div className="absolute inset-0 bg-black/60" />
-          </div>
-        )}
-
-        <div className="relative z-10 mx-auto max-w-7xl p-6">
-          <div className="-mt-24 mb-6 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-            <div className="flex items-center gap-5">
-              {restaurant?.logo_url && (
-                <img
-                  src={restaurant.logo_url}
-                  alt={restaurant.name}
-                  className="h-28 w-28 rounded-full border-4 border-white object-cover shadow-2xl"
-                />
-              )}
-
-              <div>
-                <h1 className="text-4xl font-bold">
-                  {restaurant?.name ||
-                    "Restaurant"}{" "}
-                  Kitchen
-                </h1>
-
-                <p className="mt-1 text-zinc-300">
-                  Live kitchen workflow with
-                  sound alerts and order timers
-                </p>
-              </div>
+              <p className="mt-1 text-zinc-300">
+                Live kitchen workflow with
+                sound alerts and order
+                timers
+              </p>
             </div>
 
             <div className="flex flex-wrap gap-3">
-              <Link
-                href="/dashboard"
-                className="rounded-xl bg-blue-600 px-5 py-3 font-bold"
-              >
-                Dashboard
-              </Link>
-
               <button
-                onClick={() =>
-                  setSoundEnabled(
-                    (prev) => !prev
-                  )
-                }
+                onClick={() => {
+                  const next =
+                    !soundEnabled;
+
+                  setSoundEnabled(next);
+
+                  if (audioRef.current) {
+                    audioRef.current.currentTime = 0;
+
+                    audioRef.current
+                      .play()
+                      .catch(() => {});
+                  }
+                }}
                 className={`rounded-xl px-5 py-3 font-bold ${
                   soundEnabled
-                    ? "bg-green-600 text-white"
+                    ? "bg-green-600 text-white ring-2 ring-white"
                     : "bg-zinc-800 text-zinc-300"
                 }`}
               >
-                {soundEnabled ? "🔔 Buzzer On" : "🔕 Enable Buzzer"}
+                {soundEnabled
+                  ? "🔔 Buzzer On"
+                  : "🔕 Enable Buzzer"}
               </button>
 
               <button
@@ -330,7 +320,9 @@ export default function KitchenPage() {
 
           <div className="mb-6 grid gap-3 md:grid-cols-4">
             <button
-              onClick={() => setFilter("all")}
+              onClick={() =>
+                setFilter("all")
+              }
               className={`rounded-xl p-4 text-left ${
                 filter === "all"
                   ? "bg-white text-black"
@@ -347,7 +339,9 @@ export default function KitchenPage() {
             </button>
 
             <button
-              onClick={() => setFilter("new")}
+              onClick={() =>
+                setFilter("new")
+              }
               className={`rounded-xl p-4 text-left ${
                 filter === "new"
                   ? "bg-red-600 text-white"
@@ -378,12 +372,16 @@ export default function KitchenPage() {
               </div>
 
               <div className="text-3xl font-bold">
-                {countByStatus("preparing")}
+                {countByStatus(
+                  "preparing"
+                )}
               </div>
             </button>
 
             <button
-              onClick={() => setFilter("ready")}
+              onClick={() =>
+                setFilter("ready")
+              }
               className={`rounded-xl p-4 text-left ${
                 filter === "ready"
                   ? "bg-green-600 text-white"
@@ -406,157 +404,166 @@ export default function KitchenPage() {
             </div>
           ) : (
             <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-              {filteredOrders.map((order) => {
-                const waitingMinutes =
-                  getMinutesWaiting(
-                    order.created_at
-                  );
+              {filteredOrders.map(
+                (order) => {
+                  const waitingMinutes =
+                    getMinutesWaiting(
+                      order.created_at
+                    );
 
-                const isOverdue =
-                  waitingMinutes >= 20;
+                  const isOverdue =
+                    waitingMinutes >= 20;
 
-                const isNewArrival =
-                  newlyArrivedIds.includes(
-                    order.id
-                  );
+                  const isNewArrival =
+                    newlyArrivedIds.includes(
+                      order.id
+                    );
 
-                const status =
-                  order.status || "new";
+                  const status =
+                    order.status || "new";
 
-                return (
-                  <div
-                    key={order.id}
-                    className={`rounded-2xl p-6 shadow-lg transition ${
-                      isNewArrival
-                        ? "animate-pulse border-4 border-red-500 bg-red-950"
-                        : isOverdue
-                        ? "border-4 border-orange-500 bg-zinc-900"
-                        : "bg-zinc-900"
-                    }`}
-                  >
-                    <div className="mb-5 flex items-start justify-between gap-4">
-                      <div>
-                        <h2 className="text-3xl font-bold">
-                          Table{" "}
-                          {order.table_number ||
-                            "N/A"}
-                        </h2>
+                  return (
+                    <div
+                      key={order.id}
+                      className={`rounded-2xl p-6 shadow-lg transition ${
+                        isNewArrival
+                          ? "animate-pulse border-4 border-red-500 bg-red-950"
+                          : isOverdue
+                          ? "border-4 border-orange-500 bg-zinc-900"
+                          : "bg-zinc-900"
+                      }`}
+                    >
+                      <div className="mb-5 flex items-start justify-between gap-4">
+                        <div>
+                          <h2 className="text-3xl font-bold">
+                            Table{" "}
+                            {order.table_number ||
+                              "N/A"}
+                          </h2>
 
-                        {order.customer_name && (
-                          <p className="mt-1 text-zinc-400">
-                            Customer:{" "}
-                            {
-                              order.customer_name
-                            }
+                          {order.customer_name && (
+                            <p className="mt-1 text-zinc-400">
+                              Customer:{" "}
+                              {
+                                order.customer_name
+                              }
+                            </p>
+                          )}
+
+                          <p className="mt-2 text-sm text-zinc-500">
+                            Order Time:{" "}
+                            {new Date(
+                              order.created_at
+                            ).toLocaleTimeString()}
                           </p>
-                        )}
-
-                        <p className="mt-2 text-sm text-zinc-500">
-                          Order Time:{" "}
-                          {new Date(
-                            order.created_at
-                          ).toLocaleTimeString()}
-                        </p>
-                      </div>
-
-                      <div className="flex flex-col items-end gap-2">
-                        <div
-                          className={`rounded-full px-4 py-2 text-sm font-bold uppercase ${getStatusStyle(
-                            status
-                          )}`}
-                        >
-                          {status}
                         </div>
 
-                        {isNewArrival && (
-                          <div className="rounded-full bg-red-600 px-3 py-1 text-xs font-bold">
-                            NEW ORDER
-                          </div>
-                        )}
-
-                        {isOverdue && (
-                          <div className="rounded-full bg-orange-500 px-3 py-1 text-xs font-bold text-black">
-                            OVERDUE
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="mb-5 rounded-xl bg-zinc-950 p-4">
-                      <div
-                        className={`text-2xl font-bold ${
-                          isOverdue
-                            ? "text-orange-400"
-                            : "text-white"
-                        }`}
-                      >
-                        Waiting:{" "}
-                        {waitingMinutes} min
-                      </div>
-                    </div>
-
-                    <div className="space-y-3">
-                      {order.items?.map(
-                        (item, index) => (
+                        <div className="flex flex-col items-end gap-2">
                           <div
-                            key={index}
-                            className="flex justify-between rounded-lg bg-zinc-800 p-4 text-xl"
+                            className={`rounded-full px-4 py-2 text-sm font-bold uppercase ${getStatusStyle(
+                              status
+                            )}`}
                           >
-                            <span>
-                              {item.name}
-                            </span>
-
-                            <span className="font-bold">
-                              ×{" "}
-                              {
-                                item.quantity
-                              }
-                            </span>
+                            {status}
                           </div>
-                        )
-                      )}
-                    </div>
 
-                    <div className="mt-6 grid grid-cols-2 gap-3">
-                      <button
-                        disabled={
-                          loadingId === order.id
-                        }
-                        onClick={() =>
-                          updateStatus(
-                            order.id,
-                            "preparing"
-                          )
-                        }
-                        className="rounded-xl bg-yellow-400 px-4 py-4 text-lg font-bold text-black disabled:opacity-50"
-                      >
-                        {loadingId ===
-                        order.id
-                          ? "Updating..."
-                          : "Preparing"}
-                      </button>
+                          {isNewArrival && (
+                            <div className="rounded-full bg-red-600 px-3 py-1 text-xs font-bold">
+                              NEW ORDER
+                            </div>
+                          )}
 
-                      <button
-                        disabled={
-                          loadingId === order.id
-                        }
-                        onClick={() =>
-                          updateStatus(
-                            order.id,
-                            "ready"
+                          {isOverdue && (
+                            <div className="rounded-full bg-orange-500 px-3 py-1 text-xs font-bold text-black">
+                              OVERDUE
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="mb-5 rounded-xl bg-zinc-950 p-4">
+                        <div
+                          className={`text-2xl font-bold ${
+                            isOverdue
+                              ? "text-orange-400"
+                              : "text-white"
+                          }`}
+                        >
+                          Waiting:{" "}
+                          {waitingMinutes} min
+                        </div>
+                      </div>
+
+                      <div className="space-y-3">
+                        {order.items?.map(
+                          (
+                            item,
+                            index
+                          ) => (
+                            <div
+                              key={index}
+                              className="flex justify-between rounded-lg bg-zinc-800 p-4 text-xl"
+                            >
+                              <span>
+                                {
+                                  item.name
+                                }
+                              </span>
+
+                              <span className="font-bold">
+                                ×{" "}
+                                {
+                                  item.quantity
+                                }
+                              </span>
+                            </div>
                           )
-                        }
-                        className="rounded-xl bg-green-600 px-4 py-4 text-lg font-bold text-white disabled:opacity-50"
-                      >
-                        {loadingId ===
-                        order.id
-                          ? "Updating..."
-                          : "Ready"}
-                      </button>
+                        )}
+                      </div>
+
+                      <div className="mt-6 grid grid-cols-2 gap-3">
+                        <button
+                          disabled={
+                            loadingId ===
+                            order.id
+                          }
+                          onClick={() =>
+                            updateStatus(
+                              order.id,
+                              "preparing"
+                            )
+                          }
+                          className="rounded-xl bg-yellow-400 px-4 py-4 text-lg font-bold text-black disabled:opacity-50"
+                        >
+                          {loadingId ===
+                          order.id
+                            ? "Updating..."
+                            : "Preparing"}
+                        </button>
+
+                        <button
+                          disabled={
+                            loadingId ===
+                            order.id
+                          }
+                          onClick={() =>
+                            updateStatus(
+                              order.id,
+                              "ready"
+                            )
+                          }
+                          className="rounded-xl bg-green-600 px-4 py-4 text-lg font-bold text-white disabled:opacity-50"
+                        >
+                          {loadingId ===
+                          order.id
+                            ? "Updating..."
+                            : "Ready"}
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                }
+              )}
             </div>
           )}
         </div>

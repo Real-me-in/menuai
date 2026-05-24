@@ -13,7 +13,7 @@ export default function AppNav() {
   }
 
   return (
-    <nav className="sticky top-0 z-50 border-b border-zinc-800 bg-black/90 px-4 py-3 text-white backdrop-blur">
+    <nav className="sticky top-0 z-50 border-b border-zinc-800 bg-black px-4 py-3 text-white">
       <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3">
         <Link href="/" className="text-xl font-bold">
           MenuAI
@@ -44,13 +44,10 @@ export default function AppNav() {
             href={`/menu/${restaurantSlug}`}
             className="rounded-lg bg-yellow-500 px-3 py-2 text-black"
           >
-            Customer Menu
+            Menu
           </Link>
 
-          <button
-            onClick={logout}
-            className="rounded-lg bg-zinc-700 px-3 py-2"
-          >
+          <button onClick={logout} className="rounded-lg bg-zinc-700 px-3 py-2">
             Logout
           </button>
         </div>
