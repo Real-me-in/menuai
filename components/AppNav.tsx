@@ -58,7 +58,7 @@ export default function AppNav() {
           </Link>
 
           <Link
-            href={`/menu/${restaurantSlug}`}
+            href={`/menu/${restaurantSlug}?admin=true`}
             className="rounded-lg bg-yellow-500 px-3 py-2 text-black"
           >
             Menu

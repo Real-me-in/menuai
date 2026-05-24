@@ -198,7 +198,7 @@ export default function DashboardPage() {
               </Link>
 
               <Link
-                href={`/menu/${restaurantSlug}`}
+                href={`/menu/${restaurantSlug}?admin=true`}
                 className="rounded-xl bg-yellow-500 px-5 py-3 font-bold text-black"
               >
                 Live Menu
