@@ -1,415 +1,437 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
-import QRCode from "react-qr-code";
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { supabase } from "@/lib/supabase";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
-
-type MenuItem = {
+type OrderItem = {
   name: string;
-  description: string;
-  price: string;
-  image?: string;
+  quantity: number;
+  price?: number;
 };
 
-type MenuSection = {
-  name: string;
-  items: MenuItem[];
+type Order = {
+  id: string;
+  table_number?: string;
+  customer_name?: string;
+  items: OrderItem[];
+  status?: string;
+  payment_status?: string;
+  grand_total?: number;
+  created_at: string;
+};
+
+type Restaurant = {
+  name?: string;
+  logo_url?: string;
+  banner_url?: string;
 };
 
 export default function DashboardPage() {
-  const [restaurantName, setRestaurantName] = useState("");
-  const [slug, setSlug] = useState("green-leaf-restaurant");
-  const [logoUrl, setLogoUrl] = useState("");
-  const [sections, setSections] = useState<MenuSection[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [mounted, setMounted] = useState(false);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    setMounted(true);
-    fetchMenu();
-  }, []);
+  const restaurantSlug = "mango-groove";
 
-  const publicMenuUrl =
-    mounted && slug ? `${window.location.origin}/menu/${slug}` : "";
-
-  async function fetchMenu() {
+  const fetchRestaurant = async () => {
     const { data } = await supabase
-      .from("menus")
+      .from("restaurants")
       .select("*")
-      .eq("slug", "green-leaf-restaurant")
-      .single();
+      .eq("slug", restaurantSlug)
+      .maybeSingle();
 
-    if (data) {
-      setRestaurantName(data.restaurant_name || "");
-      setSlug(data.slug || "");
-      setLogoUrl(data.logo_url || "");
-      setSections(data.menu_data?.sections || []);
-    }
-  }
+    setRestaurant(data);
+  };
 
-  async function handleSave() {
-    setLoading(true);
-
+  const fetchOrders = async () => {
     const { data, error } = await supabase
-      .from("menus")
-      .update({
-        restaurant_name: restaurantName,
-        slug,
-        logo_url: logoUrl,
-        menu_data: { sections },
-      })
-      .eq("slug", "green-leaf-restaurant")
-      .select();
+      .from("orders")
+      .select("*")
+      .eq("restaurant_slug", restaurantSlug)
+      .order("created_at", { ascending: false });
+
+    if (!error && data) {
+      setOrders(data as Order[]);
+    }
 
     setLoading(false);
+  };
 
-    if (error) {
-      alert(error.message);
-      return;
-    }
+  useEffect(() => {
+    fetchRestaurant();
+    fetchOrders();
 
-    if (!data || data.length === 0) {
-      alert("No menu row was updated");
-      return;
-    }
+    const channel = supabase
+      .channel("dashboard-live-mango-groove")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "orders",
+          filter: "restaurant_slug=eq.mango-groove",
+        },
+        () => {
+          fetchOrders();
+        }
+      )
+      .subscribe();
 
-    alert("Saved successfully");
-  }
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
-  async function handleLogoUpload(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (!file) return;
+  const analytics = useMemo(() => {
+    const today = new Date().toDateString();
 
-    const fileExt = file.name.split(".").pop();
-    const fileName = `${Date.now()}.${fileExt}`;
-
-    const { error } = await supabase.storage
-      .from("restaurant-logos")
-      .upload(fileName, file);
-
-    if (error) {
-      alert(error.message);
-      return;
-    }
-
-    const { data } = supabase.storage
-      .from("restaurant-logos")
-      .getPublicUrl(fileName);
-
-    setLogoUrl(data.publicUrl);
-  }
-
-  async function handleFoodImageUpload(
-    event: React.ChangeEvent<HTMLInputElement>,
-    sectionIndex: number,
-    itemIndex: number
-  ) {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    const fileExt = file.name.split(".").pop();
-    const fileName = `${Date.now()}-${sectionIndex}-${itemIndex}.${fileExt}`;
-
-    const { error } = await supabase.storage
-      .from("menu-item-images")
-      .upload(fileName, file);
-
-    if (error) {
-      alert(error.message);
-      return;
-    }
-
-    const { data } = supabase.storage
-      .from("menu-item-images")
-      .getPublicUrl(fileName);
-
-    const updated = [...sections];
-    updated[sectionIndex].items[itemIndex].image = data.publicUrl;
-    setSections(updated);
-  }
-
-  function addSection() {
-    setSections([...sections, { name: "New Category", items: [] }]);
-  }
-
-  function updateSectionName(sectionIndex: number, value: string) {
-    const updated = [...sections];
-    updated[sectionIndex].name = value;
-    setSections(updated);
-  }
-
-  function deleteSection(sectionIndex: number) {
-    setSections(sections.filter((_, index) => index !== sectionIndex));
-  }
-
-  function addItem(sectionIndex: number) {
-    const updated = [...sections];
-
-    updated[sectionIndex].items.push({
-      name: "New Dish",
-      description: "Dish description",
-      price: "0",
-      image: "",
-    });
-
-    setSections(updated);
-  }
-
-  function updateItem(
-    sectionIndex: number,
-    itemIndex: number,
-    field: keyof MenuItem,
-    value: string
-  ) {
-    const updated = [...sections];
-    updated[sectionIndex].items[itemIndex][field] = value;
-    setSections(updated);
-  }
-
-  function deleteItem(sectionIndex: number, itemIndex: number) {
-    const updated = [...sections];
-
-    updated[sectionIndex].items = updated[sectionIndex].items.filter(
-      (_, index) => index !== itemIndex
+    const todayOrders = orders.filter(
+      (order) =>
+        new Date(order.created_at).toDateString() === today
     );
 
-    setSections(updated);
-  }
+    const revenue = todayOrders.reduce((sum, order) => {
+      return sum + Number(order.grand_total || 0);
+    }, 0);
 
-  function downloadQR() {
-    const svg = document.getElementById("qr-code");
-    if (!svg) return;
+    const paidOrders = todayOrders.filter(
+      (order) => order.payment_status === "paid"
+    ).length;
 
-    const svgData = new XMLSerializer().serializeToString(svg);
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d");
-    const img = new Image();
+    const pendingOrders = todayOrders.filter(
+      (order) => order.payment_status !== "paid"
+    ).length;
 
-    img.onload = () => {
-      canvas.width = 300;
-      canvas.height = 300;
-      ctx?.drawImage(img, 0, 0);
+    const averageOrder =
+      todayOrders.length > 0
+        ? revenue / todayOrders.length
+        : 0;
 
-      const pngFile = canvas.toDataURL("image/png");
-      const downloadLink = document.createElement("a");
+    const itemMap: Record<string, number> = {};
 
-      downloadLink.download = "menu-qr.png";
-      downloadLink.href = pngFile;
-      downloadLink.click();
+    todayOrders.forEach((order) => {
+      order.items?.forEach((item) => {
+        if (!itemMap[item.name]) {
+          itemMap[item.name] = 0;
+        }
+
+        itemMap[item.name] += Number(item.quantity || 0);
+      });
+    });
+
+    const topItems = Object.entries(itemMap)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5);
+
+    return {
+      todayOrders,
+      revenue,
+      paidOrders,
+      pendingOrders,
+      averageOrder,
+      topItems,
     };
+  }, [orders]);
 
-    img.src =
-      "data:image/svg+xml;base64," +
-      btoa(unescape(encodeURIComponent(svgData)));
+  if (loading) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-black text-white">
+        Loading dashboard...
+      </main>
+    );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-50 to-white p-6">
-      <div className="mx-auto max-w-6xl">
-        <h1 className="mb-2 text-4xl font-bold text-green-700">
-          MenuAI Dashboard
-        </h1>
+    <main className="min-h-screen bg-black text-white">
+      {restaurant?.banner_url && (
+        <div className="relative h-64 w-full overflow-hidden">
+          <img
+            src={restaurant.banner_url}
+            alt={restaurant.name}
+            className="h-full w-full object-cover"
+          />
 
-        <p className="mb-8 text-gray-600">
-          Manage branding, QR code, menu items and food images
-        </p>
+          <div className="absolute inset-0 bg-black/60" />
+        </div>
+      )}
 
-        <div className="grid gap-6 lg:grid-cols-2">
-          <div className="rounded-3xl bg-white p-6 shadow-xl">
-            <h2 className="mb-6 text-2xl font-semibold">
-              Restaurant Branding
-            </h2>
-
-            <label className="mb-2 block font-medium">Restaurant Name</label>
-            <input
-              value={restaurantName}
-              onChange={(e) => setRestaurantName(e.target.value)}
-              className="mb-5 w-full rounded-xl border p-4"
-            />
-
-            <label className="mb-2 block font-medium">Public Menu Slug</label>
-            <input
-              value={slug}
-              onChange={(e) => setSlug(e.target.value)}
-              className="mb-5 w-full rounded-xl border p-4"
-            />
-
-            <label className="mb-2 block font-medium">
-              Upload Restaurant Logo
-            </label>
-            <input type="file" accept="image/*" onChange={handleLogoUpload} />
-
-            {logoUrl && (
+      <div className="relative z-10 mx-auto max-w-7xl p-6">
+        <div className="-mt-24 mb-8 flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
+          <div className="flex items-center gap-5">
+            {restaurant?.logo_url && (
               <img
-                src={logoUrl}
-                alt="Logo"
-                className="mt-4 h-24 w-24 rounded-full border object-cover"
+                src={restaurant.logo_url}
+                alt={restaurant.name}
+                className="h-28 w-28 rounded-full border-4 border-white object-cover shadow-2xl"
               />
             )}
+
+            <div>
+              <h1 className="text-4xl font-bold">
+                {restaurant?.name || "Restaurant"} Dashboard
+              </h1>
+
+              <p className="mt-2 text-zinc-300">
+                Real-time restaurant intelligence and operations
+              </p>
+            </div>
           </div>
 
-          <div className="rounded-3xl bg-white p-6 shadow-xl">
-            <h2 className="mb-6 text-2xl font-semibold">QR Menu Access</h2>
+          <div className="flex flex-wrap gap-3">
+            <Link
+              href="/orders"
+              className="rounded-xl bg-blue-600 px-5 py-3 font-bold"
+            >
+              Orders
+            </Link>
 
-            <div className="rounded-2xl bg-gray-50 p-6 text-center">
-              <div className="inline-block rounded-2xl bg-white p-4 shadow">
-                {mounted && slug && (
-                  <QRCode id="qr-code" value={publicMenuUrl} size={220} />
-                )}
-              </div>
+            <Link
+              href="/kitchen"
+              className="rounded-xl bg-green-600 px-5 py-3 font-bold"
+            >
+              Kitchen
+            </Link>
 
-              <p className="mt-5 break-all text-sm text-gray-600">
-                {publicMenuUrl || "Loading menu link..."}
-              </p>
+            <Link
+              href={`/menu/${restaurantSlug}`}
+              className="rounded-xl bg-yellow-500 px-5 py-3 font-bold text-black"
+            >
+              Live Menu
+            </Link>
+          </div>
+        </div>
 
-              <button
-                onClick={downloadQR}
-                className="mt-5 rounded-xl bg-black px-5 py-3 text-white"
-              >
-                Download QR Code
-              </button>
+        <div className="mb-8 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-2xl bg-zinc-900 p-6">
+            <div className="text-zinc-400">Today Revenue</div>
+
+            <div className="mt-3 text-4xl font-bold text-green-400">
+              ₹{analytics.revenue.toFixed(2)}
+            </div>
+          </div>
+
+          <div className="rounded-2xl bg-zinc-900 p-6">
+            <div className="text-zinc-400">Today's Orders</div>
+
+            <div className="mt-3 text-4xl font-bold">
+              {analytics.todayOrders.length}
+            </div>
+          </div>
+
+          <div className="rounded-2xl bg-zinc-900 p-6">
+            <div className="text-zinc-400">
+              Average Order Value
+            </div>
+
+            <div className="mt-3 text-4xl font-bold text-blue-400">
+              ₹{analytics.averageOrder.toFixed(0)}
+            </div>
+          </div>
+
+          <div className="rounded-2xl bg-zinc-900 p-6">
+            <div className="text-zinc-400">Paid Orders</div>
+
+            <div className="mt-3 text-4xl font-bold text-yellow-400">
+              {analytics.paidOrders}
             </div>
           </div>
         </div>
 
-        <div className="mt-8 rounded-3xl bg-white p-6 shadow-xl">
-          <div className="mb-6 flex items-center justify-between">
-            <h2 className="text-2xl font-semibold">Visual Menu Editor</h2>
+        <div className="mb-8 grid gap-6 xl:grid-cols-2">
+          <div className="rounded-2xl bg-zinc-900 p-6">
+            <div className="mb-5 flex items-center justify-between">
+              <h2 className="text-2xl font-bold">
+                Best Selling Items
+              </h2>
 
-            <button
-              onClick={addSection}
-              className="rounded-xl bg-green-600 px-5 py-3 text-white"
-            >
-              + Add Category
-            </button>
+              <div className="rounded-full bg-zinc-800 px-4 py-2 text-sm">
+                Today
+              </div>
+            </div>
+
+            {analytics.topItems.length === 0 ? (
+              <div className="text-zinc-500">
+                No sales data yet
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {analytics.topItems.map(([name, qty], index) => (
+                  <div
+                    key={name}
+                    className="flex items-center justify-between rounded-xl bg-zinc-800 p-4"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green-600 font-bold">
+                        {index + 1}
+                      </div>
+
+                      <div>
+                        <div className="font-bold">{name}</div>
+
+                        <div className="text-sm text-zinc-400">
+                          Top ordered item
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="text-2xl font-bold text-green-400">
+                      {qty}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
-          <div className="space-y-8">
-            {sections.map((section, sectionIndex) => (
-              <div
-                key={sectionIndex}
-                className="rounded-2xl border bg-gray-50 p-5"
-              >
-                <div className="mb-5 flex gap-3">
-                  <input
-                    value={section.name}
-                    onChange={(e) =>
-                      updateSectionName(sectionIndex, e.target.value)
-                    }
-                    className="flex-1 rounded-xl border p-3 text-xl font-semibold"
-                  />
+          <div className="rounded-2xl bg-zinc-900 p-6">
+            <div className="mb-5 flex items-center justify-between">
+              <h2 className="text-2xl font-bold">
+                Order Status Overview
+              </h2>
+            </div>
 
-                  <button
-                    onClick={() => addItem(sectionIndex)}
-                    className="rounded-xl bg-black px-4 py-2 text-white"
-                  >
-                    + Item
-                  </button>
-
-                  <button
-                    onClick={() => deleteSection(sectionIndex)}
-                    className="rounded-xl bg-red-600 px-4 py-2 text-white"
-                  >
-                    Delete
-                  </button>
+            <div className="space-y-5">
+              <div>
+                <div className="mb-2 flex justify-between">
+                  <span>Paid Orders</span>
+                  <span>{analytics.paidOrders}</span>
                 </div>
 
-                <div className="space-y-4">
-                  {section.items.map((item, itemIndex) => (
-                    <div
-                      key={itemIndex}
-                      className="rounded-xl bg-white p-4 shadow-sm"
-                    >
-                      {item.image && (
-                        <img
-                          src={item.image}
-                          alt={item.name}
-                          className="mb-4 h-40 w-full rounded-xl object-cover"
-                        />
-                      )}
-
-                      <div className="mb-3">
-                        <label className="mb-2 block text-sm font-medium">
-                          Upload Food Image
-                        </label>
-
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={(e) =>
-                            handleFoodImageUpload(e, sectionIndex, itemIndex)
-                          }
-                        />
-                      </div>
-
-                      <div className="grid gap-3 md:grid-cols-3">
-                        <input
-                          value={item.name}
-                          onChange={(e) =>
-                            updateItem(
-                              sectionIndex,
-                              itemIndex,
-                              "name",
-                              e.target.value
-                            )
-                          }
-                          className="rounded-lg border p-3"
-                        />
-
-                        <input
-                          value={item.price}
-                          onChange={(e) =>
-                            updateItem(
-                              sectionIndex,
-                              itemIndex,
-                              "price",
-                              e.target.value
-                            )
-                          }
-                          className="rounded-lg border p-3"
-                        />
-
-                        <button
-                          onClick={() => deleteItem(sectionIndex, itemIndex)}
-                          className="rounded-lg bg-red-500 px-4 py-2 text-white"
-                        >
-                          Delete Item
-                        </button>
-                      </div>
-
-                      <textarea
-                        value={item.description}
-                        onChange={(e) =>
-                          updateItem(
-                            sectionIndex,
-                            itemIndex,
-                            "description",
-                            e.target.value
-                          )
-                        }
-                        className="mt-3 w-full rounded-lg border p-3"
-                      />
-                    </div>
-                  ))}
+                <div className="h-4 overflow-hidden rounded-full bg-zinc-800">
+                  <div
+                    className="h-full bg-green-500"
+                    style={{
+                      width: `${
+                        analytics.todayOrders.length
+                          ? (analytics.paidOrders /
+                              analytics.todayOrders.length) *
+                            100
+                          : 0
+                      }%`,
+                    }}
+                  />
                 </div>
               </div>
-            ))}
+
+              <div>
+                <div className="mb-2 flex justify-between">
+                  <span>Pending Orders</span>
+                  <span>{analytics.pendingOrders}</span>
+                </div>
+
+                <div className="h-4 overflow-hidden rounded-full bg-zinc-800">
+                  <div
+                    className="h-full bg-red-500"
+                    style={{
+                      width: `${
+                        analytics.todayOrders.length
+                          ? (analytics.pendingOrders /
+                              analytics.todayOrders.length) *
+                            100
+                          : 0
+                      }%`,
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-10 rounded-2xl bg-black p-6">
+              <div className="text-zinc-400">
+                Restaurant Health
+              </div>
+
+              <div className="mt-3 text-5xl font-bold text-green-400">
+                Excellent
+              </div>
+
+              <div className="mt-2 text-zinc-500">
+                Orders are flowing smoothly today
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-2xl bg-zinc-900 p-6">
+          <div className="mb-5 flex items-center justify-between">
+            <h2 className="text-2xl font-bold">
+              Recent Orders
+            </h2>
+
+            <div className="rounded-full bg-zinc-800 px-4 py-2 text-sm">
+              Live Feed
+            </div>
           </div>
 
-          <button
-            onClick={handleSave}
-            disabled={loading}
-            className="mt-8 rounded-xl bg-green-600 px-8 py-4 text-lg font-semibold text-white"
-          >
-            {loading ? "Saving..." : "Save Full Menu"}
-          </button>
+          {orders.length === 0 ? (
+            <div className="text-zinc-500">
+              No orders available
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[700px]">
+                <thead>
+                  <tr className="border-b border-zinc-800 text-left text-zinc-400">
+                    <th className="pb-4">Table</th>
+                    <th className="pb-4">Customer</th>
+                    <th className="pb-4">Status</th>
+                    <th className="pb-4">Payment</th>
+                    <th className="pb-4">Total</th>
+                    <th className="pb-4">Time</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {orders.slice(0, 10).map((order) => (
+                    <tr
+                      key={order.id}
+                      className="border-b border-zinc-800"
+                    >
+                      <td className="py-4 font-bold">
+                        {order.table_number || "N/A"}
+                      </td>
+
+                      <td className="py-4">
+                        {order.customer_name || "-"}
+                      </td>
+
+                      <td className="py-4">
+                        <span className="rounded-full bg-zinc-800 px-3 py-1 text-sm">
+                          {order.status || "new"}
+                        </span>
+                      </td>
+
+                      <td className="py-4">
+                        <span
+                          className={`rounded-full px-3 py-1 text-sm ${
+                            order.payment_status === "paid"
+                              ? "bg-green-600"
+                              : "bg-red-600"
+                          }`}
+                        >
+                          {order.payment_status || "pending"}
+                        </span>
+                      </td>
+
+                      <td className="py-4 font-bold text-green-400">
+                        ₹
+                        {Number(order.grand_total || 0).toFixed(2)}
+                      </td>
+
+                      <td className="py-4 text-zinc-400">
+                        {new Date(
+                          order.created_at
+                        ).toLocaleTimeString()}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
-    </div>
+    </main>
   );
 }
