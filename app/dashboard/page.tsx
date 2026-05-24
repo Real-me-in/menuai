@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import AppNav from "@/components/AppNav";
+import ProtectedPage from "@/components/ProtectedPage";
 
 type OrderItem = {
   name: string;
@@ -134,17 +135,16 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <>
-        <AppNav />
+      <ProtectedPage>
         <main className="flex min-h-screen items-center justify-center bg-black text-white">
           Loading dashboard...
         </main>
-      </>
+      </ProtectedPage>
     );
   }
 
   return (
-    <>
+    <ProtectedPage>
       <AppNav />
 
       <main className="min-h-screen bg-black text-white">
@@ -235,177 +235,8 @@ export default function DashboardPage() {
               </div>
             </div>
           </div>
-
-          <div className="mb-8 grid gap-6 xl:grid-cols-2">
-            <div className="rounded-2xl bg-zinc-900 p-6">
-              <div className="mb-5 flex items-center justify-between">
-                <h2 className="text-2xl font-bold">Best Selling Items</h2>
-                <div className="rounded-full bg-zinc-800 px-4 py-2 text-sm">
-                  Today
-                </div>
-              </div>
-
-              {analytics.topItems.length === 0 ? (
-                <div className="text-zinc-500">No sales data yet</div>
-              ) : (
-                <div className="space-y-4">
-                  {analytics.topItems.map(([name, qty], index) => (
-                    <div
-                      key={name}
-                      className="flex items-center justify-between rounded-xl bg-zinc-800 p-4"
-                    >
-                      <div className="flex items-center gap-4">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green-600 font-bold">
-                          {index + 1}
-                        </div>
-
-                        <div>
-                          <div className="font-bold">{name}</div>
-                          <div className="text-sm text-zinc-400">
-                            Top ordered item
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="text-2xl font-bold text-green-400">
-                        {qty}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="rounded-2xl bg-zinc-900 p-6">
-              <div className="mb-5 flex items-center justify-between">
-                <h2 className="text-2xl font-bold">Order Status Overview</h2>
-              </div>
-
-              <div className="space-y-5">
-                <div>
-                  <div className="mb-2 flex justify-between">
-                    <span>Paid Orders</span>
-                    <span>{analytics.paidOrders}</span>
-                  </div>
-
-                  <div className="h-4 overflow-hidden rounded-full bg-zinc-800">
-                    <div
-                      className="h-full bg-green-500"
-                      style={{
-                        width: `${
-                          analytics.todayOrders.length
-                            ? (analytics.paidOrders /
-                                analytics.todayOrders.length) *
-                              100
-                            : 0
-                        }%`,
-                      }}
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <div className="mb-2 flex justify-between">
-                    <span>Pending Orders</span>
-                    <span>{analytics.pendingOrders}</span>
-                  </div>
-
-                  <div className="h-4 overflow-hidden rounded-full bg-zinc-800">
-                    <div
-                      className="h-full bg-red-500"
-                      style={{
-                        width: `${
-                          analytics.todayOrders.length
-                            ? (analytics.pendingOrders /
-                                analytics.todayOrders.length) *
-                              100
-                            : 0
-                        }%`,
-                      }}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-10 rounded-2xl bg-black p-6">
-                <div className="text-zinc-400">Restaurant Health</div>
-                <div className="mt-3 text-5xl font-bold text-green-400">
-                  Excellent
-                </div>
-                <div className="mt-2 text-zinc-500">
-                  Orders are flowing smoothly today
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="rounded-2xl bg-zinc-900 p-6">
-            <div className="mb-5 flex items-center justify-between">
-              <h2 className="text-2xl font-bold">Recent Orders</h2>
-              <div className="rounded-full bg-zinc-800 px-4 py-2 text-sm">
-                Live Feed
-              </div>
-            </div>
-
-            {orders.length === 0 ? (
-              <div className="text-zinc-500">No orders available</div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[700px]">
-                  <thead>
-                    <tr className="border-b border-zinc-800 text-left text-zinc-400">
-                      <th className="pb-4">Table</th>
-                      <th className="pb-4">Customer</th>
-                      <th className="pb-4">Status</th>
-                      <th className="pb-4">Payment</th>
-                      <th className="pb-4">Total</th>
-                      <th className="pb-4">Time</th>
-                    </tr>
-                  </thead>
-
-                  <tbody>
-                    {orders.slice(0, 10).map((order) => (
-                      <tr key={order.id} className="border-b border-zinc-800">
-                        <td className="py-4 font-bold">
-                          {order.table_number || "N/A"}
-                        </td>
-
-                        <td className="py-4">{order.customer_name || "-"}</td>
-
-                        <td className="py-4">
-                          <span className="rounded-full bg-zinc-800 px-3 py-1 text-sm">
-                            {order.status || "new"}
-                          </span>
-                        </td>
-
-                        <td className="py-4">
-                          <span
-                            className={`rounded-full px-3 py-1 text-sm ${
-                              order.payment_status === "paid"
-                                ? "bg-green-600"
-                                : "bg-red-600"
-                            }`}
-                          >
-                            {order.payment_status || "pending"}
-                          </span>
-                        </td>
-
-                        <td className="py-4 font-bold text-green-400">
-                          ₹{Number(order.grand_total || 0).toFixed(2)}
-                        </td>
-
-                        <td className="py-4 text-zinc-400">
-                          {new Date(order.created_at).toLocaleTimeString()}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
         </div>
       </main>
-    </>
+    </ProtectedPage>
   );
 }
