@@ -38,7 +38,26 @@ export default function MenuPage() {
   const searchParams = useSearchParams();
 
   const slug = params.slug as string;
-  const isAdminPreview = searchParams.get("admin") === "true";
+  const isAdminRequested =
+  searchParams.get("admin") === "true";
+
+const [isLoggedIn, setIsLoggedIn] =
+  useState(false);
+
+useEffect(() => {
+  checkAuth();
+}, []);
+
+async function checkAuth() {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  setIsLoggedIn(!!session);
+}
+
+const isAdminPreview =
+  isAdminRequested && isLoggedIn;
 
   const [menu, setMenu] = useState<any>(null);
   const [restaurant, setRestaurant] = useState<any>(null);

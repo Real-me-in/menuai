@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import AppNav from "@/components/AppNav";
 import { Plus, Trash2, Save, Upload } from "lucide-react";
@@ -18,8 +19,10 @@ type Section = {
 };
 
 export default function AdminPage() {
+  const router = useRouter();
   const restaurantSlug = "mango-groove";
 
+  const [authChecking, setAuthChecking] = useState(true);
   const [restaurantName, setRestaurantName] = useState("Mango Groove");
   const [logoUrl, setLogoUrl] = useState("");
   const [bannerUrl, setBannerUrl] = useState("");
@@ -28,8 +31,22 @@ export default function AdminPage() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    fetchMenu();
+    checkAuthAndFetchMenu();
   }, []);
+
+  async function checkAuthAndFetchMenu() {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (!session) {
+      router.replace("/login");
+      return;
+    }
+
+    setAuthChecking(false);
+    await fetchMenu();
+  }
 
   async function fetchMenu() {
     setLoading(true);
@@ -176,14 +193,11 @@ export default function AdminPage() {
     alert("Menu and branding updated successfully!");
   }
 
-  if (loading) {
+  if (authChecking || loading) {
     return (
-      <>
-        <AppNav />
-        <main className="flex min-h-screen items-center justify-center bg-black text-white">
-          Loading admin panel...
-        </main>
-      </>
+      <main className="flex min-h-screen items-center justify-center bg-black text-white">
+        Loading admin panel...
+      </main>
     );
   }
 
