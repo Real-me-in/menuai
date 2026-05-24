@@ -9,20 +9,32 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
+type MenuItem = {
+  name: string;
+  description: string;
+  price: string;
+};
+
+type MenuSection = {
+  name: string;
+  items: MenuItem[];
+};
+
 export default function DashboardPage() {
   const [restaurantName, setRestaurantName] = useState("");
   const [slug, setSlug] = useState("");
   const [logoUrl, setLogoUrl] = useState("");
+  const [sections, setSections] = useState<MenuSection[]>([]);
   const [loading, setLoading] = useState(false);
-
-  const publicMenuUrl =
-    typeof window !== "undefined"
-      ? `${window.location.origin}/menu/${slug}`
-      : "";
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
     fetchMenu();
   }, []);
+
+  const publicMenuUrl =
+    mounted && slug ? `${window.location.origin}/menu/${slug}` : "";
 
   async function fetchMenu() {
     const {
@@ -41,6 +53,7 @@ export default function DashboardPage() {
       setRestaurantName(data.restaurant_name || "");
       setSlug(data.slug || "");
       setLogoUrl(data.logo_url || "");
+      setSections(data.menu_data?.sections || []);
     }
   }
 
@@ -51,7 +64,11 @@ export default function DashboardPage() {
       data: { user },
     } = await supabase.auth.getUser();
 
-    if (!user) return;
+    if (!user) {
+      setLoading(false);
+      alert("User not logged in");
+      return;
+    }
 
     const { error } = await supabase
       .from("menus")
@@ -59,6 +76,9 @@ export default function DashboardPage() {
         restaurant_name: restaurantName,
         slug,
         logo_url: logoUrl,
+        menu_data: {
+          sections,
+        },
       })
       .eq("user_id", user.id);
 
@@ -75,7 +95,6 @@ export default function DashboardPage() {
     event: React.ChangeEvent<HTMLInputElement>
   ) {
     const file = event.target.files?.[0];
-
     if (!file) return;
 
     const fileExt = file.name.split(".").pop();
@@ -97,6 +116,58 @@ export default function DashboardPage() {
     setLogoUrl(data.publicUrl);
   }
 
+  function addSection() {
+    setSections([
+      ...sections,
+      {
+        name: "New Category",
+        items: [],
+      },
+    ]);
+  }
+
+  function updateSectionName(sectionIndex: number, value: string) {
+    const updated = [...sections];
+    updated[sectionIndex].name = value;
+    setSections(updated);
+  }
+
+  function deleteSection(sectionIndex: number) {
+    const updated = sections.filter((_, index) => index !== sectionIndex);
+    setSections(updated);
+  }
+
+  function addItem(sectionIndex: number) {
+    const updated = [...sections];
+
+    updated[sectionIndex].items.push({
+      name: "New Dish",
+      description: "Dish description",
+      price: "0",
+    });
+
+    setSections(updated);
+  }
+
+  function updateItem(
+    sectionIndex: number,
+    itemIndex: number,
+    field: keyof MenuItem,
+    value: string
+  ) {
+    const updated = [...sections];
+    updated[sectionIndex].items[itemIndex][field] = value;
+    setSections(updated);
+  }
+
+  function deleteItem(sectionIndex: number, itemIndex: number) {
+    const updated = [...sections];
+    updated[sectionIndex].items = updated[sectionIndex].items.filter(
+      (_, index) => index !== itemIndex
+    );
+    setSections(updated);
+  }
+
   function downloadQR() {
     const svg = document.getElementById("qr-code");
     if (!svg) return;
@@ -104,18 +175,16 @@ export default function DashboardPage() {
     const svgData = new XMLSerializer().serializeToString(svg);
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d");
-
     const img = new Image();
 
     img.onload = () => {
       canvas.width = 300;
       canvas.height = 300;
-
       ctx?.drawImage(img, 0, 0);
 
       const pngFile = canvas.toDataURL("image/png");
-
       const downloadLink = document.createElement("a");
+
       downloadLink.download = "menu-qr.png";
       downloadLink.href = pngFile;
       downloadLink.click();
@@ -127,90 +196,222 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 p-6">
-      <div className="mx-auto max-w-2xl rounded-xl bg-white p-6 shadow">
-        <h1 className="mb-6 text-3xl font-bold">MenuAI Dashboard</h1>
-
-        <div className="mb-4">
-          <label className="mb-2 block font-medium">
-            Restaurant Name
-          </label>
-
-          <input
-            type="text"
-            value={restaurantName}
-            onChange={(e) => setRestaurantName(e.target.value)}
-            className="w-full rounded border p-3"
-          />
-        </div>
-
-        <div className="mb-4">
-          <label className="mb-2 block font-medium">
-            Menu Slug
-          </label>
-
-          <input
-            type="text"
-            value={slug}
-            onChange={(e) => setSlug(e.target.value)}
-            className="w-full rounded border p-3"
-          />
-        </div>
-
-        <div className="mb-6">
-          <label className="mb-2 block font-medium">
-            Upload Restaurant Logo
-          </label>
-
-          <input
-            type="file"
-            accept="image/*"
-            onChange={handleLogoUpload}
-          />
+    <div className="min-h-screen bg-gradient-to-br from-green-50 to-white p-6">
+      <div className="mx-auto max-w-6xl">
+        <div className="mb-8 flex items-center justify-between">
+          <div>
+            <h1 className="text-4xl font-bold text-green-700">
+              MenuAI Dashboard
+            </h1>
+            <p className="mt-2 text-gray-600">
+              Manage branding, QR code and live menu items
+            </p>
+          </div>
 
           {logoUrl && (
             <img
               src={logoUrl}
               alt="Logo"
-              className="mt-4 h-24 w-24 rounded-full object-cover border"
+              className="h-20 w-20 rounded-full border-4 border-white object-cover shadow-lg"
             />
           )}
         </div>
 
-        <button
-          onClick={handleSave}
-          disabled={loading}
-          className="rounded bg-black px-6 py-3 text-white"
-        >
-          {loading ? "Saving..." : "Save"}
-        </button>
-
-        {slug && (
-          <div className="mt-10 text-center">
-            <h2 className="mb-4 text-xl font-semibold">
-              Public Menu QR Code
+        <div className="grid gap-6 lg:grid-cols-2">
+          <div className="rounded-3xl bg-white p-6 shadow-xl">
+            <h2 className="mb-6 text-2xl font-semibold">
+              Restaurant Branding
             </h2>
 
-            <div className="inline-block bg-white p-4">
-              <QRCode
-                id="qr-code"
-                value={publicMenuUrl}
-                size={220}
-              />
-            </div>
+            <label className="mb-2 block font-medium">
+              Restaurant Name
+            </label>
+            <input
+              value={restaurantName}
+              onChange={(e) => setRestaurantName(e.target.value)}
+              className="mb-5 w-full rounded-xl border p-4"
+            />
 
-            <p className="mt-4 text-sm text-gray-600">
-              {publicMenuUrl}
-            </p>
+            <label className="mb-2 block font-medium">
+              Public Menu Slug
+            </label>
+            <input
+              value={slug}
+              onChange={(e) => setSlug(e.target.value)}
+              className="mb-5 w-full rounded-xl border p-4"
+            />
+
+            <label className="mb-2 block font-medium">
+              Upload Restaurant Logo
+            </label>
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleLogoUpload}
+            />
+
+            {logoUrl && (
+              <img
+                src={logoUrl}
+                alt="Logo"
+                className="mt-4 h-24 w-24 rounded-full border object-cover"
+              />
+            )}
+          </div>
+
+          <div className="rounded-3xl bg-white p-6 shadow-xl">
+            <h2 className="mb-6 text-2xl font-semibold">
+              QR Menu Access
+            </h2>
+
+            <div className="rounded-2xl bg-gray-50 p-6 text-center">
+              <div className="inline-block rounded-2xl bg-white p-4 shadow">
+                {mounted && slug && (
+                  <QRCode
+                    id="qr-code"
+                    value={publicMenuUrl}
+                    size={220}
+                  />
+                )}
+              </div>
+
+              <p className="mt-5 break-all text-sm text-gray-600">
+                {publicMenuUrl || "Loading menu link..."}
+              </p>
+
+              <button
+                onClick={downloadQR}
+                className="mt-5 rounded-xl bg-black px-5 py-3 text-white"
+              >
+                Download QR Code
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-8 rounded-3xl bg-white p-6 shadow-xl">
+          <div className="mb-6 flex items-center justify-between">
+            <h2 className="text-2xl font-semibold">
+              Visual Menu Editor
+            </h2>
 
             <button
-              onClick={downloadQR}
-              className="mt-4 rounded bg-green-600 px-5 py-2 text-white"
+              onClick={addSection}
+              className="rounded-xl bg-green-600 px-5 py-3 text-white"
             >
-              Download QR
+              + Add Category
             </button>
           </div>
-        )}
+
+          {sections.length === 0 && (
+            <p className="rounded-xl bg-gray-50 p-5 text-gray-600">
+              No menu categories yet. Click “Add Category” to begin.
+            </p>
+          )}
+
+          <div className="space-y-8">
+            {sections.map((section, sectionIndex) => (
+              <div
+                key={sectionIndex}
+                className="rounded-2xl border bg-gray-50 p-5"
+              >
+                <div className="mb-5 flex gap-3">
+                  <input
+                    value={section.name}
+                    onChange={(e) =>
+                      updateSectionName(sectionIndex, e.target.value)
+                    }
+                    className="flex-1 rounded-xl border p-3 text-xl font-semibold"
+                  />
+
+                  <button
+                    onClick={() => addItem(sectionIndex)}
+                    className="rounded-xl bg-black px-4 py-2 text-white"
+                  >
+                    + Item
+                  </button>
+
+                  <button
+                    onClick={() => deleteSection(sectionIndex)}
+                    className="rounded-xl bg-red-600 px-4 py-2 text-white"
+                  >
+                    Delete
+                  </button>
+                </div>
+
+                <div className="space-y-4">
+                  {section.items.map((item, itemIndex) => (
+                    <div
+                      key={itemIndex}
+                      className="rounded-xl bg-white p-4 shadow-sm"
+                    >
+                      <div className="grid gap-3 md:grid-cols-3">
+                        <input
+                          value={item.name}
+                          onChange={(e) =>
+                            updateItem(
+                              sectionIndex,
+                              itemIndex,
+                              "name",
+                              e.target.value
+                            )
+                          }
+                          placeholder="Dish name"
+                          className="rounded-lg border p-3"
+                        />
+
+                        <input
+                          value={item.price}
+                          onChange={(e) =>
+                            updateItem(
+                              sectionIndex,
+                              itemIndex,
+                              "price",
+                              e.target.value
+                            )
+                          }
+                          placeholder="Price"
+                          className="rounded-lg border p-3"
+                        />
+
+                        <button
+                          onClick={() =>
+                            deleteItem(sectionIndex, itemIndex)
+                          }
+                          className="rounded-lg bg-red-500 px-4 py-2 text-white"
+                        >
+                          Delete Item
+                        </button>
+                      </div>
+
+                      <textarea
+                        value={item.description}
+                        onChange={(e) =>
+                          updateItem(
+                            sectionIndex,
+                            itemIndex,
+                            "description",
+                            e.target.value
+                          )
+                        }
+                        placeholder="Description"
+                        className="mt-3 w-full rounded-lg border p-3"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <button
+            onClick={handleSave}
+            disabled={loading}
+            className="mt-8 rounded-xl bg-green-600 px-8 py-4 text-lg font-semibold text-white"
+          >
+            {loading ? "Saving..." : "Save Full Menu"}
+          </button>
+        </div>
       </div>
     </div>
   );
