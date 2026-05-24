@@ -4,7 +4,7 @@ import AppNav from "@/components/AppNav";
 
 export default function QRPage() {
   const menuUrl =
-    "https://menuai-git-main-real-me-ins-projects.vercel.app/menu/mango-groove";
+    "https://menuai-tau.vercel.app/menu/mango-groove"
 
   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(
     menuUrl
