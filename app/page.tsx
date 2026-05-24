@@ -29,6 +29,10 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(false);
   const [menuSlug, setMenuSlug] = useState("");
 
+  const [logoUrl, setLogoUrl] = useState("");
+  const [bannerUrl, setBannerUrl] = useState("");
+  const [themeColor, setThemeColor] = useState("#16a34a");
+
   async function generateMenu() {
     try {
       setLoading(true);
@@ -52,6 +56,9 @@ export default function DashboardPage() {
           restaurantName,
           menuText,
           userId: user.id,
+          logoUrl,
+          bannerUrl,
+          themeColor,
         }),
       });
 
@@ -104,6 +111,33 @@ export default function DashboardPage() {
               className="w-full rounded-xl border border-gray-300 p-3"
             />
 
+            <input
+              value={logoUrl}
+              onChange={(e) => setLogoUrl(e.target.value)}
+              placeholder="Restaurant Logo Image URL"
+              className="w-full rounded-xl border border-gray-300 p-3"
+            />
+
+            <input
+              value={bannerUrl}
+              onChange={(e) => setBannerUrl(e.target.value)}
+              placeholder="Restaurant Banner Image URL"
+              className="w-full rounded-xl border border-gray-300 p-3"
+            />
+
+            <div>
+              <label className="mb-2 block font-medium text-gray-700">
+                Theme Color
+              </label>
+
+              <input
+                type="color"
+                value={themeColor}
+                onChange={(e) => setThemeColor(e.target.value)}
+                className="h-14 w-28 cursor-pointer rounded-xl border border-gray-300"
+              />
+            </div>
+
             <textarea
               value={menuText}
               onChange={(e) => setMenuText(e.target.value)}
@@ -124,7 +158,10 @@ export default function DashboardPage() {
 
         {menuData && (
           <div className="mt-10 rounded-3xl bg-white p-8 shadow-xl">
-            <h2 className="text-center text-4xl font-bold text-green-800">
+            <h2
+              className="text-center text-4xl font-bold"
+              style={{ color: themeColor }}
+            >
               {menuData.restaurantName}
             </h2>
 
@@ -135,7 +172,10 @@ export default function DashboardPage() {
             <div className="mt-10 space-y-10">
               {menuData.sections.map((section, index) => (
                 <section key={index}>
-                  <h3 className="mb-4 border-b pb-2 text-2xl font-bold">
+                  <h3
+                    className="mb-4 border-b pb-2 text-2xl font-bold"
+                    style={{ color: themeColor }}
+                  >
                     {section.name}
                   </h3>
 
@@ -148,7 +188,10 @@ export default function DashboardPage() {
                         <div className="flex justify-between gap-4">
                           <h4 className="text-lg font-bold">{item.name}</h4>
 
-                          <span className="font-bold text-green-700">
+                          <span
+                            className="font-bold"
+                            style={{ color: themeColor }}
+                          >
                             {item.price}
                           </span>
                         </div>
@@ -162,7 +205,8 @@ export default function DashboardPage() {
                             {item.tags.map((tag, tagIndex) => (
                               <span
                                 key={tagIndex}
-                                className="rounded-full bg-white px-3 py-1 text-xs font-medium text-green-700"
+                                className="rounded-full bg-white px-3 py-1 text-xs font-medium"
+                                style={{ color: themeColor }}
                               >
                                 {tag}
                               </span>

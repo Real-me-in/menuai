@@ -1,134 +1,217 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabase";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { createClient } from "@supabase/supabase-js";
+import QRCode from "react-qr-code";
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
 export default function DashboardPage() {
-  const router = useRouter();
+  const [restaurantName, setRestaurantName] = useState("");
+  const [slug, setSlug] = useState("");
+  const [logoUrl, setLogoUrl] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const [menus, setMenus] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const publicMenuUrl =
+    typeof window !== "undefined"
+      ? `${window.location.origin}/menu/${slug}`
+      : "";
 
   useEffect(() => {
-    async function loadMenus() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+    fetchMenu();
+  }, []);
 
-      if (!user) {
-        router.push("/login");
-        return;
-      }
+  async function fetchMenu() {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
-      const { data, error } = await supabase
-        .from("menus")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false });
+    if (!user) return;
 
-      if (!error && data) {
-        setMenus(data);
-      }
+    const { data } = await supabase
+      .from("menus")
+      .select("*")
+      .eq("user_id", user.id)
+      .single();
 
-      setLoading(false);
+    if (data) {
+      setRestaurantName(data.restaurant_name || "");
+      setSlug(data.slug || "");
+      setLogoUrl(data.logo_url || "");
     }
-
-    loadMenus();
-  }, [router]);
-
-  async function logout() {
-    await supabase.auth.signOut();
-    router.push("/login");
   }
 
-  if (loading) {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-green-50">
-        <h1 className="text-3xl font-bold">Loading your menus...</h1>
-      </main>
-    );
+  async function handleSave() {
+    setLoading(true);
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) return;
+
+    const { error } = await supabase
+      .from("menus")
+      .update({
+        restaurant_name: restaurantName,
+        slug,
+        logo_url: logoUrl,
+      })
+      .eq("user_id", user.id);
+
+    setLoading(false);
+
+    if (error) {
+      alert(error.message);
+    } else {
+      alert("Saved successfully");
+    }
+  }
+
+  async function handleLogoUpload(
+    event: React.ChangeEvent<HTMLInputElement>
+  ) {
+    const file = event.target.files?.[0];
+
+    if (!file) return;
+
+    const fileExt = file.name.split(".").pop();
+    const fileName = `${Date.now()}.${fileExt}`;
+
+    const { error } = await supabase.storage
+      .from("restaurant-logos")
+      .upload(fileName, file);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    const { data } = supabase.storage
+      .from("restaurant-logos")
+      .getPublicUrl(fileName);
+
+    setLogoUrl(data.publicUrl);
+  }
+
+  function downloadQR() {
+    const svg = document.getElementById("qr-code");
+    if (!svg) return;
+
+    const svgData = new XMLSerializer().serializeToString(svg);
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+
+    const img = new Image();
+
+    img.onload = () => {
+      canvas.width = 300;
+      canvas.height = 300;
+
+      ctx?.drawImage(img, 0, 0);
+
+      const pngFile = canvas.toDataURL("image/png");
+
+      const downloadLink = document.createElement("a");
+      downloadLink.download = "menu-qr.png";
+      downloadLink.href = pngFile;
+      downloadLink.click();
+    };
+
+    img.src =
+      "data:image/svg+xml;base64," +
+      btoa(unescape(encodeURIComponent(svgData)));
   }
 
   return (
-    <main className="min-h-screen bg-green-50 px-6 py-10">
-      <div className="mx-auto max-w-6xl">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-4xl font-bold text-green-800">
-              My Menus
-            </h1>
-            <p className="mt-2 text-gray-600">
-              Manage your restaurant digital menus.
-            </p>
-          </div>
+    <div className="min-h-screen bg-gray-100 p-6">
+      <div className="mx-auto max-w-2xl rounded-xl bg-white p-6 shadow">
+        <h1 className="mb-6 text-3xl font-bold">MenuAI Dashboard</h1>
 
-          <div className="flex gap-3">
-            <Link
-              href="/"
-              className="rounded-xl bg-green-600 px-5 py-3 font-semibold text-white"
-            >
-              Create New Menu
-            </Link>
+        <div className="mb-4">
+          <label className="mb-2 block font-medium">
+            Restaurant Name
+          </label>
 
-            <button
-              onClick={logout}
-              className="rounded-xl bg-black px-5 py-3 font-semibold text-white"
-            >
-              Logout
-            </button>
-          </div>
+          <input
+            type="text"
+            value={restaurantName}
+            onChange={(e) => setRestaurantName(e.target.value)}
+            className="w-full rounded border p-3"
+          />
         </div>
 
-        {menus.length === 0 ? (
-          <div className="mt-10 rounded-3xl bg-white p-8 shadow-xl">
-            <h2 className="text-2xl font-bold">No menus yet</h2>
-            <p className="mt-2 text-gray-600">
-              Create your first AI-powered menu.
+        <div className="mb-4">
+          <label className="mb-2 block font-medium">
+            Menu Slug
+          </label>
+
+          <input
+            type="text"
+            value={slug}
+            onChange={(e) => setSlug(e.target.value)}
+            className="w-full rounded border p-3"
+          />
+        </div>
+
+        <div className="mb-6">
+          <label className="mb-2 block font-medium">
+            Upload Restaurant Logo
+          </label>
+
+          <input
+            type="file"
+            accept="image/*"
+            onChange={handleLogoUpload}
+          />
+
+          {logoUrl && (
+            <img
+              src={logoUrl}
+              alt="Logo"
+              className="mt-4 h-24 w-24 rounded-full object-cover border"
+            />
+          )}
+        </div>
+
+        <button
+          onClick={handleSave}
+          disabled={loading}
+          className="rounded bg-black px-6 py-3 text-white"
+        >
+          {loading ? "Saving..." : "Save"}
+        </button>
+
+        {slug && (
+          <div className="mt-10 text-center">
+            <h2 className="mb-4 text-xl font-semibold">
+              Public Menu QR Code
+            </h2>
+
+            <div className="inline-block bg-white p-4">
+              <QRCode
+                id="qr-code"
+                value={publicMenuUrl}
+                size={220}
+              />
+            </div>
+
+            <p className="mt-4 text-sm text-gray-600">
+              {publicMenuUrl}
             </p>
-          </div>
-        ) : (
-          <div className="mt-10 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {menus.map((menu) => (
-              <div
-                key={menu.id}
-                className="rounded-3xl bg-white p-6 shadow-xl"
-              >
-                <h2 className="text-2xl font-bold text-green-800">
-                  {menu.restaurant_name}
-                </h2>
 
-                <p className="mt-2 text-sm text-gray-500">
-                  /menu/{menu.slug}
-                </p>
-
-                <div className="mt-6 flex flex-col gap-3">
-                  <Link
-                    href={`/menu/${menu.slug}`}
-                    target="_blank"
-                    className="rounded-xl bg-green-600 px-5 py-3 text-center font-semibold text-white"
-                  >
-                    View Public Menu
-                  </Link>
-
-                  <button
-                    onClick={() => {
-                      navigator.clipboard.writeText(
-                        `${window.location.origin}/menu/${menu.slug}`
-                      );
-                      alert("Menu link copied!");
-                    }}
-                    className="rounded-xl border border-green-600 px-5 py-3 font-semibold text-green-700"
-                  >
-                    Copy Menu Link
-                  </button>
-                </div>
-              </div>
-            ))}
+            <button
+              onClick={downloadQR}
+              className="mt-4 rounded bg-green-600 px-5 py-2 text-white"
+            >
+              Download QR
+            </button>
           </div>
         )}
       </div>
-    </main>
+    </div>
   );
 }
