@@ -13,6 +13,7 @@ type MenuItem = {
   name: string;
   description: string;
   price: string;
+  image?: string;
 };
 
 type MenuSection = {
@@ -22,7 +23,7 @@ type MenuSection = {
 
 export default function DashboardPage() {
   const [restaurantName, setRestaurantName] = useState("");
-  const [slug, setSlug] = useState("");
+  const [slug, setSlug] = useState("green-leaf-restaurant");
   const [logoUrl, setLogoUrl] = useState("");
   const [sections, setSections] = useState<MenuSection[]>([]);
   const [loading, setLoading] = useState(false);
@@ -37,16 +38,10 @@ export default function DashboardPage() {
     mounted && slug ? `${window.location.origin}/menu/${slug}` : "";
 
   async function fetchMenu() {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) return;
-
     const { data } = await supabase
       .from("menus")
       .select("*")
-      .eq("user_id", user.id)
+      .eq("slug", "green-leaf-restaurant")
       .single();
 
     if (data) {
@@ -60,40 +55,33 @@ export default function DashboardPage() {
   async function handleSave() {
     setLoading(true);
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      setLoading(false);
-      alert("User not logged in");
-      return;
-    }
-
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("menus")
       .update({
         restaurant_name: restaurantName,
         slug,
         logo_url: logoUrl,
-        menu_data: {
-          sections,
-        },
+        menu_data: { sections },
       })
-      .eq("user_id", user.id);
+      .eq("slug", "green-leaf-restaurant")
+      .select();
 
     setLoading(false);
 
     if (error) {
       alert(error.message);
-    } else {
-      alert("Saved successfully");
+      return;
     }
+
+    if (!data || data.length === 0) {
+      alert("No menu row was updated");
+      return;
+    }
+
+    alert("Saved successfully");
   }
 
-  async function handleLogoUpload(
-    event: React.ChangeEvent<HTMLInputElement>
-  ) {
+  async function handleLogoUpload(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
 
@@ -116,14 +104,37 @@ export default function DashboardPage() {
     setLogoUrl(data.publicUrl);
   }
 
+  async function handleFoodImageUpload(
+    event: React.ChangeEvent<HTMLInputElement>,
+    sectionIndex: number,
+    itemIndex: number
+  ) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const fileExt = file.name.split(".").pop();
+    const fileName = `${Date.now()}-${sectionIndex}-${itemIndex}.${fileExt}`;
+
+    const { error } = await supabase.storage
+      .from("menu-item-images")
+      .upload(fileName, file);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    const { data } = supabase.storage
+      .from("menu-item-images")
+      .getPublicUrl(fileName);
+
+    const updated = [...sections];
+    updated[sectionIndex].items[itemIndex].image = data.publicUrl;
+    setSections(updated);
+  }
+
   function addSection() {
-    setSections([
-      ...sections,
-      {
-        name: "New Category",
-        items: [],
-      },
-    ]);
+    setSections([...sections, { name: "New Category", items: [] }]);
   }
 
   function updateSectionName(sectionIndex: number, value: string) {
@@ -133,8 +144,7 @@ export default function DashboardPage() {
   }
 
   function deleteSection(sectionIndex: number) {
-    const updated = sections.filter((_, index) => index !== sectionIndex);
-    setSections(updated);
+    setSections(sections.filter((_, index) => index !== sectionIndex));
   }
 
   function addItem(sectionIndex: number) {
@@ -144,6 +154,7 @@ export default function DashboardPage() {
       name: "New Dish",
       description: "Dish description",
       price: "0",
+      image: "",
     });
 
     setSections(updated);
@@ -162,9 +173,11 @@ export default function DashboardPage() {
 
   function deleteItem(sectionIndex: number, itemIndex: number) {
     const updated = [...sections];
+
     updated[sectionIndex].items = updated[sectionIndex].items.filter(
       (_, index) => index !== itemIndex
     );
+
     setSections(updated);
   }
 
@@ -198,24 +211,13 @@ export default function DashboardPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-white p-6">
       <div className="mx-auto max-w-6xl">
-        <div className="mb-8 flex items-center justify-between">
-          <div>
-            <h1 className="text-4xl font-bold text-green-700">
-              MenuAI Dashboard
-            </h1>
-            <p className="mt-2 text-gray-600">
-              Manage branding, QR code and live menu items
-            </p>
-          </div>
+        <h1 className="mb-2 text-4xl font-bold text-green-700">
+          MenuAI Dashboard
+        </h1>
 
-          {logoUrl && (
-            <img
-              src={logoUrl}
-              alt="Logo"
-              className="h-20 w-20 rounded-full border-4 border-white object-cover shadow-lg"
-            />
-          )}
-        </div>
+        <p className="mb-8 text-gray-600">
+          Manage branding, QR code, menu items and food images
+        </p>
 
         <div className="grid gap-6 lg:grid-cols-2">
           <div className="rounded-3xl bg-white p-6 shadow-xl">
@@ -223,18 +225,14 @@ export default function DashboardPage() {
               Restaurant Branding
             </h2>
 
-            <label className="mb-2 block font-medium">
-              Restaurant Name
-            </label>
+            <label className="mb-2 block font-medium">Restaurant Name</label>
             <input
               value={restaurantName}
               onChange={(e) => setRestaurantName(e.target.value)}
               className="mb-5 w-full rounded-xl border p-4"
             />
 
-            <label className="mb-2 block font-medium">
-              Public Menu Slug
-            </label>
+            <label className="mb-2 block font-medium">Public Menu Slug</label>
             <input
               value={slug}
               onChange={(e) => setSlug(e.target.value)}
@@ -244,11 +242,7 @@ export default function DashboardPage() {
             <label className="mb-2 block font-medium">
               Upload Restaurant Logo
             </label>
-            <input
-              type="file"
-              accept="image/*"
-              onChange={handleLogoUpload}
-            />
+            <input type="file" accept="image/*" onChange={handleLogoUpload} />
 
             {logoUrl && (
               <img
@@ -260,18 +254,12 @@ export default function DashboardPage() {
           </div>
 
           <div className="rounded-3xl bg-white p-6 shadow-xl">
-            <h2 className="mb-6 text-2xl font-semibold">
-              QR Menu Access
-            </h2>
+            <h2 className="mb-6 text-2xl font-semibold">QR Menu Access</h2>
 
             <div className="rounded-2xl bg-gray-50 p-6 text-center">
               <div className="inline-block rounded-2xl bg-white p-4 shadow">
                 {mounted && slug && (
-                  <QRCode
-                    id="qr-code"
-                    value={publicMenuUrl}
-                    size={220}
-                  />
+                  <QRCode id="qr-code" value={publicMenuUrl} size={220} />
                 )}
               </div>
 
@@ -291,9 +279,7 @@ export default function DashboardPage() {
 
         <div className="mt-8 rounded-3xl bg-white p-6 shadow-xl">
           <div className="mb-6 flex items-center justify-between">
-            <h2 className="text-2xl font-semibold">
-              Visual Menu Editor
-            </h2>
+            <h2 className="text-2xl font-semibold">Visual Menu Editor</h2>
 
             <button
               onClick={addSection}
@@ -302,12 +288,6 @@ export default function DashboardPage() {
               + Add Category
             </button>
           </div>
-
-          {sections.length === 0 && (
-            <p className="rounded-xl bg-gray-50 p-5 text-gray-600">
-              No menu categories yet. Click “Add Category” to begin.
-            </p>
-          )}
 
           <div className="space-y-8">
             {sections.map((section, sectionIndex) => (
@@ -345,6 +325,28 @@ export default function DashboardPage() {
                       key={itemIndex}
                       className="rounded-xl bg-white p-4 shadow-sm"
                     >
+                      {item.image && (
+                        <img
+                          src={item.image}
+                          alt={item.name}
+                          className="mb-4 h-40 w-full rounded-xl object-cover"
+                        />
+                      )}
+
+                      <div className="mb-3">
+                        <label className="mb-2 block text-sm font-medium">
+                          Upload Food Image
+                        </label>
+
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) =>
+                            handleFoodImageUpload(e, sectionIndex, itemIndex)
+                          }
+                        />
+                      </div>
+
                       <div className="grid gap-3 md:grid-cols-3">
                         <input
                           value={item.name}
@@ -356,7 +358,6 @@ export default function DashboardPage() {
                               e.target.value
                             )
                           }
-                          placeholder="Dish name"
                           className="rounded-lg border p-3"
                         />
 
@@ -370,14 +371,11 @@ export default function DashboardPage() {
                               e.target.value
                             )
                           }
-                          placeholder="Price"
                           className="rounded-lg border p-3"
                         />
 
                         <button
-                          onClick={() =>
-                            deleteItem(sectionIndex, itemIndex)
-                          }
+                          onClick={() => deleteItem(sectionIndex, itemIndex)}
                           className="rounded-lg bg-red-500 px-4 py-2 text-white"
                         >
                           Delete Item
@@ -394,7 +392,6 @@ export default function DashboardPage() {
                             e.target.value
                           )
                         }
-                        placeholder="Description"
                         className="mt-3 w-full rounded-lg border p-3"
                       />
                     </div>
