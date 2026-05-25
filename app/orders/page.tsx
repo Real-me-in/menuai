@@ -1,8 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import AppNav from "@/components/AppNav";
+import ProtectedPage from "@/components/ProtectedPage";
+import { useRestaurant } from "@/contexts/RestaurantContext";
+
+type UserRole = "owner" | "manager" | "cashier" | "kitchen" | "waiter";
 
 type OrderItem = {
   id?: string;
@@ -13,6 +18,7 @@ type OrderItem = {
 
 type Order = {
   id: string;
+  restaurant_id: string;
   table_number?: string;
   customer_name?: string;
   items: OrderItem[];
@@ -26,70 +32,114 @@ type Order = {
   created_at: string;
 };
 
-type Restaurant = {
-  name?: string;
-  logo_url?: string;
-};
-
 export default function OrdersDashboardPage() {
-  const restaurantSlug = "mango-groove";
+  const { restaurant, loading: restaurantLoading } = useRestaurant();
 
   const [orders, setOrders] = useState<Order[]>([]);
-  const [restaurant, setRestaurant] =
-    useState<Restaurant | null>(null);
-
-  const [selectedOrder, setSelectedOrder] =
-    useState<Order | null>(null);
-
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [taxPercent, setTaxPercent] = useState(5);
-  const [serviceCharge, setServiceCharge] =
-    useState(0);
+  const [serviceCharge, setServiceCharge] = useState(0);
+  const [paymentMethod, setPaymentMethod] = useState("Cash");
+  const [loading, setLoading] = useState(true);
+  const [authorized, setAuthorized] = useState(false);
+  const [role, setRole] = useState<UserRole | null>(null);
+  const [restaurantId, setRestaurantId] = useState<string | null>(null);
 
-  const [paymentMethod, setPaymentMethod] =
-    useState("Cash");
+  async function getAuthToken() {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
 
-  const fetchRestaurant = async () => {
-    const { data } = await supabase
-      .from("restaurants")
-      .select("*")
-      .eq("slug", restaurantSlug)
-      .maybeSingle();
+    return session?.access_token || null;
+  }
 
-    setRestaurant(data);
-  };
+  async function fetchOrders(currentRestaurantId?: string) {
+    try {
+      const targetRestaurantId = currentRestaurantId || restaurantId;
 
-  const fetchOrders = async () => {
-    const { data, error } = await supabase
-      .from("orders")
-      .select("*")
-      .eq("restaurant_slug", restaurantSlug)
-      .not("status", "eq", "completed")
-      .order("created_at", { ascending: false });
+      if (!targetRestaurantId) return;
 
-    if (error) {
-      alert("Error loading orders: " + error.message);
-      return;
+      const { data, error } = await supabase
+        .from("orders")
+        .select("*")
+        .eq("restaurant_id", targetRestaurantId)
+        .neq("status", "completed")
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        alert(error.message || "Failed to load orders");
+        return;
+      }
+
+      setOrders((data || []) as Order[]);
+    } catch (err) {
+      console.error(err);
+      alert("Failed to load orders");
     }
-
-    setOrders((data || []) as Order[]);
-  };
+  }
 
   useEffect(() => {
-    fetchRestaurant();
-    fetchOrders();
+    if (restaurantLoading) return;
+
+    async function checkAccessAndLoad() {
+      setLoading(true);
+
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        setAuthorized(false);
+        setLoading(false);
+        return;
+      }
+
+      const { data: roleData, error: roleError } = await supabase
+        .from("restaurant_users")
+        .select("restaurant_id, role")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      const userRole = roleData?.role as UserRole | undefined;
+
+      if (
+        roleError ||
+        !roleData ||
+        !userRole ||
+        !["owner", "manager", "waiter", "cashier"].includes(userRole)
+      ) {
+        setAuthorized(false);
+        setLoading(false);
+        return;
+      }
+
+      setRole(userRole);
+      setAuthorized(true);
+      setRestaurantId(roleData.restaurant_id);
+
+      await fetchOrders(roleData.restaurant_id);
+
+      setLoading(false);
+    }
+
+    checkAccessAndLoad();
+  }, [restaurantLoading]);
+
+  useEffect(() => {
+    if (!restaurantId) return;
 
     const channel = supabase
-      .channel("live-orders-mango-groove")
+      .channel(`orders-dashboard-${restaurantId}`)
       .on(
         "postgres_changes",
         {
           event: "*",
           schema: "public",
           table: "orders",
-          filter: "restaurant_slug=eq.mango-groove",
+          filter: `restaurant_id=eq.${restaurantId}`,
         },
         () => {
-          fetchOrders();
+          fetchOrders(restaurantId);
         }
       )
       .subscribe();
@@ -97,7 +147,7 @@ export default function OrdersDashboardPage() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [restaurantId]);
 
   const bill = useMemo(() => {
     if (!selectedOrder) {
@@ -109,24 +159,13 @@ export default function OrdersDashboardPage() {
       };
     }
 
-    const subtotal = selectedOrder.items.reduce(
-      (sum, item) => {
-        return (
-          sum +
-          Number(item.price || 0) *
-            Number(item.quantity || 1)
-        );
-      },
-      0
-    );
+    const subtotal = selectedOrder.items.reduce((sum, item) => {
+      return sum + Number(item.price || 0) * Number(item.quantity || 1);
+    }, 0);
 
-    const taxAmount =
-      (subtotal * Number(taxPercent || 0)) / 100;
-
+    const taxAmount = (subtotal * Number(taxPercent || 0)) / 100;
     const service = Number(serviceCharge || 0);
-
-    const grandTotal =
-      subtotal + taxAmount + service;
+    const grandTotal = subtotal + taxAmount + service;
 
     return {
       subtotal,
@@ -136,28 +175,38 @@ export default function OrdersDashboardPage() {
     };
   }, [selectedOrder, taxPercent, serviceCharge]);
 
-  const updateOrderStatus = async (
-    orderId: string,
-    status: string
-  ) => {
-    const { error } = await supabase
-      .from("orders")
-      .update({ status })
-      .eq("id", orderId);
+  async function updateOrderStatus(orderId: string, status: string) {
+    const token = await getAuthToken();
 
-    if (error) {
-      alert(
-        "Error updating order: " + error.message
-      );
-
+    if (!token) {
+      alert("Session expired. Please login again.");
       return;
     }
 
-    fetchOrders();
-  };
+    const response = await fetch("/api/update-order-status", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        orderId,
+        status,
+      }),
+    });
 
-  const saveBill = async () => {
-    if (!selectedOrder) return;
+    const result = await response.json();
+
+    if (!response.ok) {
+      alert(result.error || "Failed to update order.");
+      return;
+    }
+
+    await fetchOrders();
+  }
+
+  async function saveBill() {
+    if (!selectedOrder || !restaurantId) return;
 
     const { error } = await supabase
       .from("orders")
@@ -171,34 +220,60 @@ export default function OrdersDashboardPage() {
         status: "completed",
         completed_at: new Date().toISOString(),
       })
-      .eq("id", selectedOrder.id);
+      .eq("id", selectedOrder.id)
+      .eq("restaurant_id", restaurantId);
 
     if (error) {
-      alert(
-        "Error saving bill: " + error.message
-      );
-
+      alert("Error saving bill: " + error.message);
       return;
     }
 
     setOrders((prevOrders) =>
-      prevOrders.filter(
-        (order) =>
-          order.id !== selectedOrder.id
-      )
+      prevOrders.filter((order) => order.id !== selectedOrder.id)
     );
 
     setSelectedOrder(null);
-
     alert("Bill saved successfully");
-  };
+  }
 
-  const printReceipt = () => {
+  function printReceipt() {
     window.print();
-  };
+  }
+
+  if (loading || restaurantLoading) {
+    return (
+      <ProtectedPage>
+        <main className="flex min-h-screen items-center justify-center bg-black text-white">
+          Loading orders...
+        </main>
+      </ProtectedPage>
+    );
+  }
+
+  if (!authorized) {
+    return (
+      <ProtectedPage>
+        <main className="flex min-h-screen items-center justify-center bg-black px-6 text-center text-white">
+          <div>
+            <h1 className="text-4xl font-bold text-red-500">Access denied</h1>
+            <p className="mt-4 text-zinc-300">
+              Only owners, managers, waiters, or cashiers can access orders.
+            </p>
+
+            <Link
+              href="/dashboard"
+              className="mt-6 inline-block rounded-xl bg-white px-5 py-3 font-bold text-black"
+            >
+              Back to Dashboard
+            </Link>
+          </div>
+        </main>
+      </ProtectedPage>
+    );
+  }
 
   return (
-    <>
+    <ProtectedPage>
       <AppNav />
 
       <main className="min-h-screen bg-gray-100 p-6">
@@ -216,9 +291,9 @@ export default function OrdersDashboardPage() {
               {restaurant?.name || "Restaurant"} Orders
             </h1>
 
-            <p className="text-gray-600">
-              Live billing and payment management
-            </p>
+            <p className="text-gray-600">Live billing and payment management</p>
+
+            <p className="mt-1 text-sm text-gray-500">Logged in as: {role}</p>
           </div>
         </div>
 
@@ -230,28 +305,21 @@ export default function OrdersDashboardPage() {
               </div>
             ) : (
               orders.map((order) => (
-                <div
-                  key={order.id}
-                  className="rounded-xl bg-white p-5 shadow"
-                >
+                <div key={order.id} className="rounded-xl bg-white p-5 shadow">
                   <div className="mb-3 flex items-center justify-between">
                     <div>
                       <h2 className="text-xl font-semibold">
-                        Table{" "}
-                        {order.table_number || "N/A"}
+                        Table {order.table_number || "N/A"}
                       </h2>
 
                       {order.customer_name && (
                         <p className="text-sm text-gray-600">
-                          Customer:{" "}
-                          {order.customer_name}
+                          Customer: {order.customer_name}
                         </p>
                       )}
 
                       <p className="text-sm text-gray-500">
-                        {new Date(
-                          order.created_at
-                        ).toLocaleString()}
+                        {new Date(order.created_at).toLocaleString()}
                       </p>
                     </div>
 
@@ -261,50 +329,49 @@ export default function OrdersDashboardPage() {
                   </div>
 
                   <div className="space-y-2">
-                    {order.items?.map(
-                      (item, index) => (
-                        <div
-                          key={index}
-                          className="flex justify-between border-b pb-1 text-sm"
-                        >
-                          <span>
-                            {item.name} ×{" "}
-                            {item.quantity}
-                          </span>
+                    {order.items?.map((item, index) => (
+                      <div
+                        key={index}
+                        className="flex justify-between border-b pb-1 text-sm"
+                      >
+                        <span>
+                          {item.name} × {item.quantity}
+                        </span>
 
-                          <span>
-                            ₹
-                            {(
-                              Number(
-                                item.price || 0
-                              ) *
-                              Number(
-                                item.quantity || 1
-                              )
-                            ).toFixed(2)}
-                          </span>
-                        </div>
-                      )
-                    )}
+                        <span>
+                          ₹
+                          {(
+                            Number(item.price || 0) *
+                            Number(item.quantity || 1)
+                          ).toFixed(2)}
+                        </span>
+                      </div>
+                    ))}
                   </div>
 
                   <div className="mt-4 flex flex-wrap gap-2">
-                    <button
-                      onClick={() =>
-                        updateOrderStatus(
-                          order.id,
-                          "preparing"
-                        )
-                      }
-                      className="rounded-lg bg-yellow-500 px-4 py-2 text-white"
-                    >
-                      Preparing
-                    </button>
+                    {order.status === "new" && (
+                      <button
+                        onClick={() =>
+                          updateOrderStatus(order.id, "preparing")
+                        }
+                        className="rounded-lg bg-yellow-500 px-4 py-2 text-white"
+                      >
+                        Mark Preparing
+                      </button>
+                    )}
+
+                    {order.status === "preparing" && (
+                      <button
+                        onClick={() => updateOrderStatus(order.id, "ready")}
+                        className="rounded-lg bg-green-600 px-4 py-2 text-white"
+                      >
+                        Mark Ready
+                      </button>
+                    )}
 
                     <button
-                      onClick={() =>
-                        setSelectedOrder(order)
-                      }
+                      onClick={() => setSelectedOrder(order)}
                       className="rounded-lg bg-black px-4 py-2 text-white"
                     >
                       Generate Bill
@@ -324,80 +391,55 @@ export default function OrdersDashboardPage() {
               <div id="receipt">
                 <div className="mb-6 text-center">
                   <h2 className="text-2xl font-bold">
-                    {restaurant?.name ||
-                      "MenuAI Restaurant"}
+                    {restaurant?.name || "MenuAI Restaurant"}
                   </h2>
 
-                  <p className="text-sm text-gray-500">
-                    Printable Receipt
-                  </p>
+                  <p className="text-sm text-gray-500">Printable Receipt</p>
                 </div>
 
                 <div className="mb-4 text-sm">
                   <p>
-                    <strong>Order ID:</strong>{" "}
-                    {selectedOrder.id}
+                    <strong>Order ID:</strong> {selectedOrder.id}
                   </p>
 
                   <p>
-                    <strong>Table:</strong>{" "}
-                    {selectedOrder.table_number ||
-                      "N/A"}
+                    <strong>Table:</strong> {selectedOrder.table_number || "N/A"}
                   </p>
 
                   {selectedOrder.customer_name && (
                     <p>
-                      <strong>Customer:</strong>{" "}
-                      {
-                        selectedOrder.customer_name
-                      }
+                      <strong>Customer:</strong> {selectedOrder.customer_name}
                     </p>
                   )}
 
                   <p>
                     <strong>Date:</strong>{" "}
-                    {new Date(
-                      selectedOrder.created_at
-                    ).toLocaleString()}
+                    {new Date(selectedOrder.created_at).toLocaleString()}
                   </p>
                 </div>
 
                 <div className="mb-4 border-y py-3">
-                  {selectedOrder.items.map(
-                    (item, index) => (
-                      <div
-                        key={index}
-                        className="mb-2 flex justify-between"
-                      >
-                        <span>
-                          {item.name} ×{" "}
-                          {item.quantity}
-                        </span>
+                  {selectedOrder.items.map((item, index) => (
+                    <div key={index} className="mb-2 flex justify-between">
+                      <span>
+                        {item.name} × {item.quantity}
+                      </span>
 
-                        <span>
-                          ₹
-                          {(
-                            Number(
-                              item.price || 0
-                            ) *
-                            Number(
-                              item.quantity || 1
-                            )
-                          ).toFixed(2)}
-                        </span>
-                      </div>
-                    )
-                  )}
+                      <span>
+                        ₹
+                        {(
+                          Number(item.price || 0) *
+                          Number(item.quantity || 1)
+                        ).toFixed(2)}
+                      </span>
+                    </div>
+                  ))}
                 </div>
 
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
                     <span>Subtotal</span>
-
-                    <span>
-                      ₹
-                      {bill.subtotal.toFixed(2)}
-                    </span>
+                    <span>₹{bill.subtotal.toFixed(2)}</span>
                   </div>
 
                   <div className="flex items-center justify-between gap-4">
@@ -406,28 +448,16 @@ export default function OrdersDashboardPage() {
                     <input
                       type="number"
                       value={taxPercent}
-                      onChange={(e) =>
-                        setTaxPercent(
-                          Number(
-                            e.target.value
-                          )
-                        )
-                      }
+                      onChange={(e) => setTaxPercent(Number(e.target.value))}
                       className="w-24 rounded border px-2 py-1 text-right print:hidden"
                     />
 
-                    <span className="hidden print:inline">
-                      {taxPercent}%
-                    </span>
+                    <span className="hidden print:inline">{taxPercent}%</span>
                   </div>
 
                   <div className="flex justify-between">
                     <span>Tax Amount</span>
-
-                    <span>
-                      ₹
-                      {bill.taxAmount.toFixed(2)}
-                    </span>
+                    <span>₹{bill.taxAmount.toFixed(2)}</span>
                   </div>
 
                   <div className="flex items-center justify-between gap-4">
@@ -436,29 +466,18 @@ export default function OrdersDashboardPage() {
                     <input
                       type="number"
                       value={serviceCharge}
-                      onChange={(e) =>
-                        setServiceCharge(
-                          Number(
-                            e.target.value
-                          )
-                        )
-                      }
+                      onChange={(e) => setServiceCharge(Number(e.target.value))}
                       className="w-24 rounded border px-2 py-1 text-right print:hidden"
                     />
 
                     <span className="hidden print:inline">
-                      ₹
-                      {bill.service.toFixed(2)}
+                      ₹{bill.service.toFixed(2)}
                     </span>
                   </div>
 
                   <div className="flex justify-between border-t pt-3 text-lg font-bold">
                     <span>Grand Total</span>
-
-                    <span>
-                      ₹
-                      {bill.grandTotal.toFixed(2)}
-                    </span>
+                    <span>₹{bill.grandTotal.toFixed(2)}</span>
                   </div>
                 </div>
 
@@ -469,11 +488,7 @@ export default function OrdersDashboardPage() {
 
                   <select
                     value={paymentMethod}
-                    onChange={(e) =>
-                      setPaymentMethod(
-                        e.target.value
-                      )
-                    }
+                    onChange={(e) => setPaymentMethod(e.target.value)}
                     className="w-full rounded-lg border px-3 py-2"
                   >
                     <option>Cash</option>
@@ -499,9 +514,7 @@ export default function OrdersDashboardPage() {
                   </button>
 
                   <button
-                    onClick={() =>
-                      setSelectedOrder(null)
-                    }
+                    onClick={() => setSelectedOrder(null)}
                     className="rounded-lg bg-gray-500 px-5 py-2 text-white"
                   >
                     Cancel
@@ -516,6 +529,6 @@ export default function OrdersDashboardPage() {
           </section>
         </div>
       </main>
-    </>
+    </ProtectedPage>
   );
 }

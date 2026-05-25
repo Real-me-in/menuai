@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import AppNav from "@/components/AppNav";
 import ProtectedPage from "@/components/ProtectedPage";
+import { useRestaurant } from "@/contexts/RestaurantContext";
 import { Plus, Trash2, Save, Upload } from "lucide-react";
 
 type MenuItem = {
@@ -19,18 +20,26 @@ type Section = {
 };
 
 export default function AdminPage() {
-  const restaurantSlug = "mango-groove";
+  const {
+    restaurant,
+    restaurantSlug,
+    restaurantId,
+    loading: restaurantLoading,
+  } = useRestaurant();
 
-  const [restaurantName, setRestaurantName] = useState("Mango Groove");
+  const [restaurantName, setRestaurantName] = useState("");
   const [logoUrl, setLogoUrl] = useState("");
   const [bannerUrl, setBannerUrl] = useState("");
   const [sections, setSections] = useState<Section[]>([]);
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
+    if (restaurantLoading || !restaurantSlug) return;
+
     fetchMenu();
-  }, []);
+  }, [restaurantSlug, restaurantLoading]);
 
   async function fetchMenu() {
     setLoading(true);
@@ -42,9 +51,14 @@ export default function AdminPage() {
       .maybeSingle();
 
     if (data) {
-      setRestaurantName(data.restaurant_name || "Mango Groove");
-      setLogoUrl(data.logo_url || "");
-      setBannerUrl(data.banner_url || "");
+      setRestaurantName(
+        data.restaurant_name || restaurant?.name || "Restaurant"
+      );
+
+      setLogoUrl(data.logo_url || restaurant?.logo_url || "");
+
+      setBannerUrl(data.banner_url || restaurant?.banner_url || "");
+
       setSections(data.menu_data?.sections || []);
     }
 
@@ -76,12 +90,18 @@ export default function AdminPage() {
 
   async function handleLogoUpload(file: File) {
     const url = await uploadImage(file, "logos");
-    if (url) setLogoUrl(url);
+
+    if (url) {
+      setLogoUrl(url);
+    }
   }
 
   async function handleBannerUpload(file: File) {
     const url = await uploadImage(file, "banners");
-    if (url) setBannerUrl(url);
+
+    if (url) {
+      setBannerUrl(url);
+    }
   }
 
   async function handleDishUpload(
@@ -90,25 +110,38 @@ export default function AdminPage() {
     itemIndex: number
   ) {
     const url = await uploadImage(file, "dishes");
+
     if (!url) return;
 
     const updated = [...sections];
+
     updated[sectionIndex].items[itemIndex].image = url;
+
     setSections(updated);
   }
 
   function addSection() {
-    setSections((prev) => [...prev, { name: "New Section", items: [] }]);
+    setSections((prev) => [
+      ...prev,
+      {
+        name: "New Section",
+        items: [],
+      },
+    ]);
   }
 
   function updateSectionName(sectionIndex: number, value: string) {
     const updated = [...sections];
+
     updated[sectionIndex].name = value;
+
     setSections(updated);
   }
 
   function deleteSection(sectionIndex: number) {
-    setSections((prev) => prev.filter((_, index) => index !== sectionIndex));
+    setSections((prev) =>
+      prev.filter((_, index) => index !== sectionIndex)
+    );
   }
 
   function addItem(sectionIndex: number) {
@@ -131,7 +164,9 @@ export default function AdminPage() {
     value: string
   ) {
     const updated = [...sections];
+
     updated[sectionIndex].items[itemIndex][field] = value;
+
     setSections(updated);
   }
 
@@ -154,7 +189,9 @@ export default function AdminPage() {
         restaurant_name: restaurantName,
         logo_url: logoUrl,
         banner_url: bannerUrl,
-        menu_data: { sections },
+        menu_data: {
+          sections,
+        },
       })
       .eq("slug", restaurantSlug);
 
@@ -165,7 +202,7 @@ export default function AdminPage() {
         logo_url: logoUrl,
         banner_url: bannerUrl,
       })
-      .eq("slug", restaurantSlug);
+      .eq("id", restaurantId);
 
     setSaving(false);
 
@@ -177,7 +214,7 @@ export default function AdminPage() {
     alert("Menu and branding updated successfully!");
   }
 
-  if (loading) {
+  if (loading || restaurantLoading) {
     return (
       <ProtectedPage>
         <main className="flex min-h-screen items-center justify-center bg-black text-white">
@@ -195,7 +232,10 @@ export default function AdminPage() {
         <div className="mx-auto max-w-7xl">
           <div className="mb-8 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
             <div>
-              <h1 className="text-4xl font-bold">MenuAI Admin Panel</h1>
+              <h1 className="text-4xl font-bold">
+                {restaurantName} Admin Panel
+              </h1>
+
               <p className="mt-2 text-zinc-400">
                 Manage menu, branding, and restaurant content
               </p>
@@ -207,12 +247,15 @@ export default function AdminPage() {
               className="flex items-center gap-2 rounded-xl bg-green-600 px-6 py-4 font-bold text-white"
             >
               <Save size={20} />
+
               {saving ? "Saving..." : "Save Changes"}
             </button>
           </div>
 
           <div className="mb-8 rounded-2xl bg-zinc-900 p-6">
-            <h2 className="mb-5 text-2xl font-bold">Restaurant Branding</h2>
+            <h2 className="mb-5 text-2xl font-bold">
+              Restaurant Branding
+            </h2>
 
             <div className="grid gap-5 md:grid-cols-2">
               <input
@@ -224,28 +267,38 @@ export default function AdminPage() {
 
               <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-blue-600 p-4 font-bold">
                 <Upload size={20} />
+
                 Upload Logo
+
                 <input
                   type="file"
                   accept="image/*"
                   className="hidden"
                   onChange={(e) => {
                     const file = e.target.files?.[0];
-                    if (file) handleLogoUpload(file);
+
+                    if (file) {
+                      handleLogoUpload(file);
+                    }
                   }}
                 />
               </label>
 
               <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-purple-600 p-4 font-bold md:col-span-2">
                 <Upload size={20} />
+
                 Upload Banner
+
                 <input
                   type="file"
                   accept="image/*"
                   className="hidden"
                   onChange={(e) => {
                     const file = e.target.files?.[0];
-                    if (file) handleBannerUpload(file);
+
+                    if (file) {
+                      handleBannerUpload(file);
+                    }
                   }}
                 />
               </label>
@@ -284,7 +337,10 @@ export default function AdminPage() {
 
           <div className="space-y-8">
             {sections.map((section, sectionIndex) => (
-              <div key={sectionIndex} className="rounded-2xl bg-zinc-900 p-6">
+              <div
+                key={sectionIndex}
+                className="rounded-2xl bg-zinc-900 p-6"
+              >
                 <div className="mb-6 flex items-center gap-4">
                   <input
                     value={section.name}
@@ -304,7 +360,10 @@ export default function AdminPage() {
 
                 <div className="space-y-5">
                   {section.items.map((item, itemIndex) => (
-                    <div key={itemIndex} className="rounded-2xl bg-zinc-800 p-5">
+                    <div
+                      key={itemIndex}
+                      className="rounded-2xl bg-zinc-800 p-5"
+                    >
                       <div className="mb-4 grid gap-4 md:grid-cols-2">
                         <input
                           value={item.name}
@@ -351,15 +410,22 @@ export default function AdminPage() {
 
                       <label className="mb-4 flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-blue-600 p-4 font-bold">
                         <Upload size={20} />
+
                         Upload Dish Image
+
                         <input
                           type="file"
                           accept="image/*"
                           className="hidden"
                           onChange={(e) => {
                             const file = e.target.files?.[0];
+
                             if (file) {
-                              handleDishUpload(file, sectionIndex, itemIndex);
+                              handleDishUpload(
+                                file,
+                                sectionIndex,
+                                itemIndex
+                              );
                             }
                           }}
                         />
@@ -374,7 +440,9 @@ export default function AdminPage() {
                       )}
 
                       <button
-                        onClick={() => deleteItem(sectionIndex, itemIndex)}
+                        onClick={() =>
+                          deleteItem(sectionIndex, itemIndex)
+                        }
                         className="rounded-xl bg-red-600 px-5 py-3 font-bold"
                       >
                         Delete Dish

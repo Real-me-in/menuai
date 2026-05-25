@@ -1,158 +1,193 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
 export default function LoginPage() {
   const router = useRouter();
 
-  const [mode, setMode] = useState<"login" | "signup">(
-    "login"
-  );
-
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-
+  const [mode, setMode] = useState<"login" | "signup">("login");
   const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
 
-  const handleAuth = async () => {
-    if (!email || !password) {
-      alert("Please enter email and password");
-      return;
-    }
+  async function claimStaffInvite() {
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
-    setLoading(true);
-
-    if (mode === "signup") {
-      const { error } = await supabase.auth.signUp({
-        email,
-        password,
-      });
-
-      setLoading(false);
-
-      if (error) {
-        alert(error.message);
-        return;
+      if (!session?.access_token) {
+        return false;
       }
 
-      alert(
-        "Account created successfully. Please login now."
-      );
-
-      setMode("login");
-      return;
-    }
-
-    const { error } =
-      await supabase.auth.signInWithPassword({
-        email,
-        password,
+      const res = await fetch("/api/claim-staff-invite", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
       });
 
-    setLoading(false);
+      return res.ok;
+    } catch (err) {
+      console.error("Claim invite error:", err);
+      return false;
+    }
+  }
 
-    if (error) {
-      alert(error.message);
-      return;
+  async function completeLoginFlow() {
+    await claimStaffInvite();
+    router.replace("/dashboard");
+  }
+
+  useEffect(() => {
+    async function checkExistingSession() {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (session?.user) {
+        await completeLoginFlow();
+      }
     }
 
     const {
-      data: { user },
-    } = await supabase.auth.getUser();
+      data: authListener,
+    } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (
+          event === "SIGNED_IN" &&
+          session?.user
+        ) {
+          await completeLoginFlow();
+        }
+      }
+    );
 
-    if (!user) {
-      alert("User not found");
-      return;
+    checkExistingSession();
+
+    return () => {
+      authListener.subscription.unsubscribe();
+    };
+  }, []);
+
+  async function handleAuth(e: React.FormEvent) {
+    e.preventDefault();
+
+    setLoading(true);
+    setMessage("");
+
+    const normalizedEmail = email.trim().toLowerCase();
+
+    try {
+      if (mode === "signup") {
+        const { data, error } =
+          await supabase.auth.signUp({
+            email: normalizedEmail,
+            password,
+          });
+
+        if (error) {
+          throw error;
+        }
+
+        if (!data.session) {
+          setMessage(
+            "Account created. Please verify your email before logging in."
+          );
+
+          setLoading(false);
+          return;
+        }
+
+        await completeLoginFlow();
+      } else {
+        const { error } =
+          await supabase.auth.signInWithPassword({
+            email: normalizedEmail,
+            password,
+          });
+
+        if (error) {
+          throw error;
+        }
+
+        await completeLoginFlow();
+      }
+    } catch (err: any) {
+      console.error(err);
+      setMessage(
+        err.message || "Something went wrong"
+      );
+    } finally {
+      setLoading(false);
     }
-
-    const { data: restaurant } = await supabase
-      .from("restaurants")
-      .select("*")
-      .eq("owner_id", user.id)
-      .single();
-
-    if (!restaurant) {
-      router.push("/onboarding");
-      return;
-    }
-
-    router.push("/dashboard");
-  };
+  }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-black p-6 text-white">
-      <div className="w-full max-w-md rounded-3xl bg-zinc-900 p-8 shadow-2xl">
-        <div className="mb-8 text-center">
-          <h1 className="text-4xl font-bold">MenuAI</h1>
+    <main className="flex min-h-screen items-center justify-center bg-slate-950 px-4">
+      <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-xl">
+        <h1 className="text-center text-3xl font-bold text-slate-900">
+          MenuAI
+        </h1>
 
-          <p className="mt-2 text-zinc-400">
-            Restaurant SaaS Platform
-          </p>
-        </div>
+        <p className="mt-2 text-center text-slate-500">
+          {mode === "login"
+            ? "Login to your restaurant dashboard"
+            : "Create your MenuAI account"}
+        </p>
 
-        <div className="mb-6 flex rounded-2xl bg-zinc-800 p-1">
-          <button
-            onClick={() => setMode("login")}
-            className={`flex-1 rounded-xl py-3 font-bold transition ${
-              mode === "login"
-                ? "bg-green-600 text-white"
-                : "text-zinc-400"
-            }`}
-          >
-            Login
-          </button>
-
-          <button
-            onClick={() => setMode("signup")}
-            className={`flex-1 rounded-xl py-3 font-bold transition ${
-              mode === "signup"
-                ? "bg-blue-600 text-white"
-                : "text-zinc-400"
-            }`}
-          >
-            Sign Up
-          </button>
-        </div>
-
-        <div className="space-y-4">
+        <form
+          onSubmit={handleAuth}
+          className="mt-8 space-y-4"
+        >
           <div>
-            <label className="mb-2 block text-sm text-zinc-400">
+            <label className="block text-sm font-medium text-slate-700">
               Email
             </label>
 
             <input
               type="email"
-              placeholder="owner@restaurant.com"
+              required
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-2xl border border-zinc-700 bg-black px-4 py-4 outline-none transition focus:border-green-500"
+              onChange={(e) =>
+                setEmail(e.target.value)
+              }
+              placeholder="you@example.com"
+              className="mt-1 w-full rounded-lg border border-slate-300 px-4 py-3 text-slate-900 outline-none focus:border-slate-900"
             />
           </div>
 
           <div>
-            <label className="mb-2 block text-sm text-zinc-400">
+            <label className="block text-sm font-medium text-slate-700">
               Password
             </label>
 
             <input
               type="password"
-              placeholder="••••••••"
+              required
+              minLength={6}
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-2xl border border-zinc-700 bg-black px-4 py-4 outline-none transition focus:border-green-500"
+              onChange={(e) =>
+                setPassword(e.target.value)
+              }
+              placeholder="Minimum 6 characters"
+              className="mt-1 w-full rounded-lg border border-slate-300 px-4 py-3 text-slate-900 outline-none focus:border-slate-900"
             />
           </div>
 
+          {message && (
+            <p className="rounded-lg bg-slate-100 p-3 text-sm text-slate-700">
+              {message}
+            </p>
+          )}
+
           <button
-            onClick={handleAuth}
+            type="submit"
             disabled={loading}
-            className={`w-full rounded-2xl py-4 text-lg font-bold transition ${
-              mode === "login"
-                ? "bg-green-600 hover:bg-green-500"
-                : "bg-blue-600 hover:bg-blue-500"
-            } disabled:opacity-50`}
+            className="w-full rounded-lg bg-slate-900 py-3 font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
           >
             {loading
               ? "Please wait..."
@@ -160,21 +195,25 @@ export default function LoginPage() {
               ? "Login"
               : "Create Account"}
           </button>
-        </div>
+        </form>
 
-        <div className="mt-8 rounded-2xl bg-black p-5">
-          <div className="mb-3 text-sm font-bold text-zinc-400">
-            MenuAI Features
-          </div>
+        <button
+          type="button"
+          onClick={() => {
+            setMode(
+              mode === "login"
+                ? "signup"
+                : "login"
+            );
 
-          <div className="space-y-2 text-sm text-zinc-500">
-            <div>• QR Menu Ordering</div>
-            <div>• Kitchen Display System</div>
-            <div>• Real-time Orders</div>
-            <div>• Billing & Receipts</div>
-            <div>• Restaurant Analytics</div>
-          </div>
-        </div>
+            setMessage("");
+          }}
+          className="mt-5 w-full text-sm text-slate-600 hover:text-slate-900"
+        >
+          {mode === "login"
+            ? "New here? Create an account"
+            : "Already have an account? Login"}
+        </button>
       </div>
     </main>
   );

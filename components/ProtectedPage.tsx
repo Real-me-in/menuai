@@ -10,23 +10,41 @@ export default function ProtectedPage({
   children: React.ReactNode;
 }) {
   const router = useRouter();
+  const [allowed, setAllowed] = useState(false);
   const [checking, setChecking] = useState(true);
 
   useEffect(() => {
-    async function checkSession() {
+    async function checkUser() {
       const {
-        data: { session },
-      } = await supabase.auth.getSession();
+        data: { user },
+        error,
+      } = await supabase.auth.getUser();
 
-      if (!session) {
+      if (error || !user) {
+        setAllowed(false);
+        setChecking(false);
         router.replace("/login");
         return;
       }
 
+      setAllowed(true);
       setChecking(false);
     }
 
-    checkSession();
+    checkUser();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!session) {
+        setAllowed(false);
+        router.replace("/login");
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, [router]);
 
   if (checking) {
@@ -35,6 +53,10 @@ export default function ProtectedPage({
         Checking login...
       </main>
     );
+  }
+
+  if (!allowed) {
+    return null;
   }
 
   return <>{children}</>;
