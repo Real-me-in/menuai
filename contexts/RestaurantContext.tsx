@@ -57,6 +57,7 @@ export function RestaurantProvider({ children }: { children: ReactNode }) {
           restaurant_id,
           role,
           active,
+          created_at,
           restaurants (
             id,
             name,
@@ -67,7 +68,8 @@ export function RestaurantProvider({ children }: { children: ReactNode }) {
         `
         )
         .eq("user_id", user.id)
-        .eq("active", true);
+        .eq("active", true)
+        .order("created_at", { ascending: false });
 
       if (error || !data) {
         console.error("RestaurantContext error:", error);
@@ -88,15 +90,18 @@ export function RestaurantProvider({ children }: { children: ReactNode }) {
           ? localStorage.getItem("menuai_current_restaurant_slug")
           : null;
 
+      const savedRestaurant =
+        savedSlug && mappedRestaurants.find((r) => r.slug === savedSlug);
+
       const selected =
-        mappedRestaurants.find((r) => r.slug === savedSlug) ||
-        mappedRestaurants[0] ||
-        null;
+        savedRestaurant || mappedRestaurants[0] || null;
 
       setRestaurant(selected);
 
       if (selected) {
         localStorage.setItem("menuai_current_restaurant_slug", selected.slug);
+      } else {
+        localStorage.removeItem("menuai_current_restaurant_slug");
       }
 
       setLoading(false);
